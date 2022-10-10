@@ -1,18 +1,13 @@
 use clap::Args;
 use heck::ToSnakeCase;
-use std::{
-    error::Error,
-    fs::{self, create_dir_all, File},
-    io::Write,
-    path::Path,
-    process::Command,
-};
+use std::{error::Error, path::Path, process::Command};
 
 use crate::{validate_dependency, write_templates, TS_PATH};
 
 #[derive(Debug, Args)]
 pub struct InitArgs {
-    #[clap(value_parser)]
+    /// The name of your Solana project
+    #[arg(required = true)]
     project_name: String,
 }
 
