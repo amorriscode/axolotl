@@ -7,11 +7,11 @@ use std::process::exit;
 #[command(version, about, long_about = None)]
 struct Args {
     #[clap(subcommand)]
-    command: Command,
+    command: AxolotlCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Command {
+pub enum AxolotlCommand {
     Init(InitArgs),
     Build(BuildArgs),
 }
@@ -20,8 +20,8 @@ fn main() {
     let args = Args::parse();
 
     let res = match args.command {
-        Command::Init(args) => init(args),
-        Command::Build(args) => build(args),
+        AxolotlCommand::Init(args) => init(args),
+        AxolotlCommand::Build(args) => build(args),
     };
 
     if let Err(err) = res {
