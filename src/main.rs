@@ -1,4 +1,4 @@
-use axolotl::{build, compile, init, BuildArgs, CompileArgs, InitArgs};
+use axolotl::{cmd_build, cmd_compile, cmd_init, BuildArgs, CompileArgs, InitArgs};
 use clap::{Parser, Subcommand};
 use std::process::exit;
 
@@ -24,9 +24,9 @@ fn main() {
     let args = Cli::parse();
 
     let res = match args.command {
-        Commands::Init(args) => init(args),
-        Commands::Build(args) => build(args),
-        Commands::Compile(args) => compile(args),
+        Commands::Init(args) => cmd_init(args),
+        Commands::Build(args) => cmd_build(args),
+        Commands::Compile(args) => cmd_compile(args),
     };
 
     if let Err(err) = res {

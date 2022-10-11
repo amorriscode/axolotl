@@ -11,7 +11,7 @@ pub struct InitArgs {
     project_name: String,
 }
 
-pub fn init(args: InitArgs) -> Result<(), Box<dyn Error>> {
+pub fn cmd_init(args: InitArgs) -> Result<(), Box<dyn Error>> {
     if &args.project_name.to_snake_case() != &args.project_name {
         return Err(format!(
             "Project name must be snake case. Re-run the command: axolotl init {}",
