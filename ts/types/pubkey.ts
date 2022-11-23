@@ -1,1 +1,1 @@
-export type Pubkey = string
+export type Pubkey = string // [u8; 32]
