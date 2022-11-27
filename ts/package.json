@@ -1,8 +1,15 @@
 {
-  "name": "axolotl",
-  "version": "0.0.1",
+  "name": "@axolotl/ts",
+  "version": "0.0.2-0",
   "description": "Write Anchor-compatible Solana programs in TypeScript",
-  "repository": "https://github.com/amorriscode/axolotl",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amorriscode/axolotl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/amorriscode/axolotl/issues"
+  },
+  "homepage": "https://github.com/amorriscode/axolotl#readme",
   "author": "Anthony Morris <amorriscode@gmail.com>",
   "license": "MIT",
   "private": false,
