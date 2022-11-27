@@ -3,8 +3,10 @@
 # TypeScript Library
 node_modules/
 dist/
-# Used for developing the library
+
+# Used for development
 sample.ts
+dev_project
 
 # MacOS
 .DS_Store
