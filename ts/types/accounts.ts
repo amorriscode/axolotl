@@ -1,4 +1,4 @@
-import { Pubkey } from './pubkey'
+import { Pubkey } from './keys'
 
 export type AccountInfo = {
   /** Public key of the account  */

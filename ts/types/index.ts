@@ -1,2 +1,2 @@
-export * from './account'
-export * from './pubkey'
+export * from './accounts'
+export * from './keys'
