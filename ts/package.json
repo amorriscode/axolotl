@@ -1,6 +1,6 @@
 {
   "name": "@axolotl/ts",
-  "version": "0.0.2-0",
+  "version": "0.0.2-1",
   "description": "Write Anchor-compatible Solana programs in TypeScript",
   "repository": {
     "type": "git",
@@ -26,7 +26,8 @@
   "types": "dist/axolotl.d.ts",
   "scripts": {
     "build": "microbundle",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "postversion": "git push --tags && yarn publish . --tag $npm_package_version && git push && echo \"Successfully released version $npm_package_version!\""
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^5.39.0",
