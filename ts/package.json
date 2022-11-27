@@ -1,6 +1,6 @@
 {
   "name": "@axolotl/ts",
-  "version": "0.0.2-1",
+  "version": "0.0.1",
   "description": "Write Anchor-compatible Solana programs in TypeScript",
   "repository": {
     "type": "git",
