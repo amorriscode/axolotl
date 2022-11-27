@@ -80,14 +80,19 @@ pub fn cmd_init(args: InitArgs) -> Result<(), Box<dyn Error>> {
         Err(e) => return Result::Err(e),
     };
 
-    println!("Adding @axolotl/ts library...");
+    println!("Adding @axolotl-sol/ts library...");
     let yarn_output = Command::new("yarn")
-        .args(["add @axolotl/ts"])
+        .args([
+            "--cwd",
+            project_path.to_str().unwrap(),
+            "add",
+            "@axolotl-sol/ts",
+        ])
         .output()
         .unwrap();
     if !yarn_output.status.success() {
         return Err(format!(
-            "Failed to install @axolotl/ts library: {}",
+            "Failed to install @axolotl-sol/ts library: {}",
             String::from_utf8(yarn_output.stderr)?
         )
         .into());
