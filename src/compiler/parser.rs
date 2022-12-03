@@ -4,10 +4,10 @@ use swc_common::{
     sync::Lrc,
     SourceMap,
 };
-use swc_ecma_ast::EsVersion;
+use swc_ecma_ast::*;
 use swc_ecma_parser::{lexer::Lexer, Capturing, Parser, StringInput, Syntax};
 
-pub fn parse(source: StringInput) -> Result<String, Box<dyn Error>> {
+pub fn parse(source: StringInput) -> Result<Module, Box<dyn Error>> {
     let cm: Lrc<SourceMap> = Default::default();
     let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(cm.clone()));
 
@@ -22,12 +22,10 @@ pub fn parse(source: StringInput) -> Result<String, Box<dyn Error>> {
 
     let mut parser = Parser::new_from(capturing);
 
-    let _module = parser
+    let module = parser
         .parse_typescript_module()
         .map_err(|e| e.into_diagnostic(&handler).emit())
         .expect("Failed to parse module.");
 
-    println!("Tokens: {:?}", parser.input().take());
-
-    Ok("Ok".to_string())
+    Ok(module)
 }

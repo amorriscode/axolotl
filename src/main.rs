@@ -16,7 +16,7 @@ pub enum Commands {
     Init(InitArgs),
     /// Compile your TypeScript source code to Anchor/Rust
     Build(BuildArgs),
-    /// Compiles a single Seahorse file
+    /// Compiles a single Axolotl file
     Compile(CompileArgs),
 }
 
