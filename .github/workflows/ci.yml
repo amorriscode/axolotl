@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  unit:
+    name: Compiler and client tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  programs:
+    name: Build programs and conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Rust for Anchor proc macros
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install Agave 4.1.2
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.1.2/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Install Anchor 1.2.2
+        run: |
+          curl -sSfL -o "$HOME/.local/bin/anchor" \
+            https://github.com/otter-sec/anchor/releases/download/v1.2.2/anchor-1.2.2-x86_64-unknown-linux-gnu
+          chmod +x "$HOME/.local/bin/anchor"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Cache Cargo and platform tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            .anchor-target
+          key: anchor-1.2.2-solana-4.1.2-${{ hashFiles('examples/**/src/*.ts', 'conformance/src/*.ts', 'packages/compiler/src/**') }}
+          restore-keys: |
+            anchor-1.2.2-solana-4.1.2-
+      - run: npm ci
+      - run: npm run build:programs
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.anchor-target
+      - run: npm run conformance
+
+  site:
+    name: Learning site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run site:build

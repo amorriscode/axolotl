@@ -1,0 +1,27 @@
+{
+  "name": "site",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173"
+  },
+  "dependencies": {
+    "@axolotl-sol/compiler": "*",
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-javascript": "6.2.4",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.38.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.1.0",
+    "vite": "7.1.12"
+  }
+}

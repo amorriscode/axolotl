@@ -1,0 +1,237 @@
+{
+  "generated": "2026-10-28",
+  "passed": 20,
+  "failed": 0,
+  "unsupported": 12,
+  "total": 32,
+  "passRate": 62.5,
+  "anchor": "1.2.2",
+  "solana": "4.1.2",
+  "runtime": "litesvm 1.6.1",
+  "rows": [
+    {
+      "id": "counter.lifecycle",
+      "group": "Examples",
+      "feature": "Counter init, has_one, and checked add",
+      "status": "pass",
+      "detail": "examples/counter"
+    },
+    {
+      "id": "counter.errors",
+      "group": "Examples",
+      "feature": "Signer and custom error constraints",
+      "status": "pass",
+      "detail": "examples/counter"
+    },
+    {
+      "id": "token.vault",
+      "group": "Tokens",
+      "feature": "SPL Token transfer_checked, including a PDA signer",
+      "status": "pass",
+      "detail": "examples/token-vault"
+    },
+    {
+      "id": "pda.profile",
+      "group": "PDAs",
+      "feature": "PDA seeds, stored bump, bytes32, and events",
+      "status": "pass",
+      "detail": "examples/pda-profile"
+    },
+    {
+      "id": "cpi.relay",
+      "group": "CPI",
+      "feature": "CPI into another Anchor program",
+      "status": "pass",
+      "detail": "examples/cpi"
+    },
+    {
+      "id": "accounts.init",
+      "group": "Accounts",
+      "feature": "init, payer, rent exemption, program ownership",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "accounts.close",
+      "group": "Accounts",
+      "feature": "close returns lamports",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "control.if",
+      "group": "Language",
+      "feature": "if / else",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "control.loop",
+      "group": "Language",
+      "feature": "Bounded for loop",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "cpi.system",
+      "group": "CPI",
+      "feature": "System program transfer",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "types.scalars",
+      "group": "Types",
+      "feature": "u8, u16, u32, u64, i64, bool, bytes32",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "sysvar.clock",
+      "group": "Sysvars",
+      "feature": "Clock sysvar",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "sysvar.rent",
+      "group": "Sysvars",
+      "feature": "Rent sysvar minimum_balance",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "types.string",
+      "group": "Types",
+      "feature": "String arguments, require, and log",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "types.pubkey",
+      "group": "Types",
+      "feature": "Pubkey instruction arguments",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "events.emit",
+      "group": "Events",
+      "feature": "Anchor events in transaction logs",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "pda.mixed",
+      "group": "PDAs",
+      "feature": "Seeds from constants, args, and account keys",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "accounts.init-if-needed",
+      "group": "Accounts",
+      "feature": "init_if_needed",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "runtime.compute",
+      "group": "Runtime",
+      "feature": "Compute budget",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "idl.match",
+      "group": "IDL",
+      "feature": "Anchor IDL discriminators, events, and error codes",
+      "status": "pass",
+      "detail": "packages/compiler"
+    },
+    {
+      "id": "accounts.zero-copy",
+      "group": "Accounts",
+      "feature": "Zero-copy and AccountLoader",
+      "status": "unsupported",
+      "detail": "No zero_copy / repr(C) lowering."
+    },
+    {
+      "id": "accounts.realloc",
+      "group": "Accounts",
+      "feature": "realloc and dynamic account growth",
+      "status": "unsupported",
+      "detail": "Account size is fixed at init."
+    },
+    {
+      "id": "accounts.optional",
+      "group": "Accounts",
+      "feature": "Optional and remaining accounts",
+      "status": "unsupported",
+      "detail": "Every account is required and positional."
+    },
+    {
+      "id": "accounts.nested",
+      "group": "Types",
+      "feature": "Vec, enums, and nested structs in accounts",
+      "status": "unsupported",
+      "detail": "Account fields are scalars, Pubkey, or bytes32."
+    },
+    {
+      "id": "tokens.extensions",
+      "group": "Tokens",
+      "feature": "Token-2022 extensions",
+      "status": "unsupported",
+      "detail": "transfer_checked uses the token interface, but extensions are not modeled."
+    },
+    {
+      "id": "tokens.ata",
+      "group": "Tokens",
+      "feature": "Associated token account creation inside the program",
+      "status": "unsupported",
+      "detail": "Tests create token accounts with the SPL Token program directly."
+    },
+    {
+      "id": "cpi.return-data",
+      "group": "CPI",
+      "feature": "CPI return data and multiple PDA signers",
+      "status": "unsupported",
+      "detail": "One PDA signer per cpi() call, no return data."
+    },
+    {
+      "id": "events.cpi",
+      "group": "Events",
+      "feature": "emit_cpi",
+      "status": "unsupported",
+      "detail": "Events use emit!, not the self-CPI event instruction."
+    },
+    {
+      "id": "runtime.lookup",
+      "group": "Runtime",
+      "feature": "Address lookup tables",
+      "status": "unsupported",
+      "detail": "Transactions are v0 without lookup tables."
+    },
+    {
+      "id": "sysvar.other",
+      "group": "Sysvars",
+      "feature": "Instructions, SlotHashes, StakeHistory, EpochSchedule",
+      "status": "unsupported",
+      "detail": "Only Clock and Rent are exposed."
+    },
+    {
+      "id": "lang.while",
+      "group": "Language",
+      "feature": "while, break, continue, and internal functions",
+      "status": "unsupported",
+      "detail": "Only the documented for-loop form and instruction functions."
+    },
+    {
+      "id": "backend.sbpf",
+      "group": "Compiler",
+      "feature": "Direct sBPF / SBF codegen",
+      "status": "unsupported",
+      "detail": "Axolotl emits Anchor Rust and uses the Agave toolchain. See the README."
+    }
+  ]
+}

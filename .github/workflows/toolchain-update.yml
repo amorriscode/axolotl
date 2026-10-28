@@ -1,0 +1,86 @@
+name: Toolchain update
+
+on:
+  schedule:
+    # Mondays 15:00 UTC. Public registries only; no repository secrets are required.
+    - cron: "0 15 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: scan
+        run: |
+          node scripts/check-updates.ts --apply > /tmp/updates.json
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const report = JSON.parse(readFileSync("/tmp/updates.json", "utf8"));
+            const count = report.updates.length;
+            console.log(`found ${count} update(s)`);
+            if (count === 0) process.exit(0);
+            const body = report.updates.map((item) => `- ${item.name}: ${item.from} → ${item.to}`).join("\n");
+            const fs = await import("node:fs");
+            fs.writeFileSync("/tmp/pr-body.md", `## Version bumps\n\n${body}\n\nThe conformance suite is re-run in this workflow. A pull request opened with the default GITHUB_TOKEN does not start other workflows; this job is the test run for the bump.\n`);
+          '
+      - name: Stop when nothing changed
+        id: changed
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install Rust, Agave, and Anchor
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          source "$HOME/.cargo/env"
+          SOLANA=$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync("toolchain.json","utf8")).solana)')
+          ANCHOR=$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync("toolchain.json","utf8")).anchor)')
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL -o "$HOME/.local/bin/anchor" \
+            "https://github.com/otter-sec/anchor/releases/download/v${ANCHOR}/anchor-${ANCHOR}-x86_64-unknown-linux-gnu" || true
+          chmod +x "$HOME/.local/bin/anchor" || true
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Rebuild and score
+        if: steps.changed.outputs.changed == 'true'
+        id: score
+        run: |
+          set +e
+          source "$HOME/.cargo/env"
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$HOME/.local/bin:$PATH"
+          npm run build:programs
+          BUILD=$?
+          npm run conformance
+          TEST=$?
+          {
+            echo "## Conformance"
+            echo
+            if [ $BUILD -ne 0 ]; then echo "Program build failed (exit $BUILD)."; fi
+            if [ $TEST -ne 0 ]; then echo "Conformance command failed (exit $TEST)."; fi
+            echo
+            sed -n '1,40p' CONFORMANCE.md
+          } >> /tmp/pr-body.md
+      - name: Open pull request
+        if: steps.changed.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump Solana toolchain pins"
+          title: "chore: bump Solana, Anchor, and JS SDK pins"
+          body-path: /tmp/pr-body.md
+          branch: toolchain/update
