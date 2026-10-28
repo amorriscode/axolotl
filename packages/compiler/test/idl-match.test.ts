@@ -6,14 +6,22 @@ import { compile } from "../src/index.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
+/** Public program ids live in each project's axolotl.toml, not in this test. */
+function programId(dir: string): string {
+  const text = readFileSync(path.join(root, dir, "axolotl.toml"), "utf8");
+  const match = /^id\s*=\s*"([^"]+)"/m.exec(text);
+  if (!match) throw new Error(`No program id in ${dir}/axolotl.toml`);
+  return match[1]!;
+}
+
 const projects = [
-  ["examples/counter", "counter", "8qUgK4vi5mPRKpGfTVto7FpWyBjNgfB6U6opToXWM585", "src/counter.ts"],
-  ["examples/token-vault", "token_vault", "4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3", "src/token_vault.ts"],
-  ["examples/pda-profile", "pda_profile", "5kYGWFrmwpgL8xsCtPCwzdxWjZ3itbtmPqjk8sRNGiU3", "src/pda_profile.ts"],
-  ["examples/cpi/echo", "echo", "5MWt5tcVEsYHTh2tPJxnM8gRtvUpWa4E72tn2PzhaoXU", "src/echo.ts"],
-  ["examples/cpi/relay", "relay", "6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c", "src/relay.ts"],
-  ["conformance", "conformance", "AU6PWDE1vrLgrcJpFvhWwDupTVHASu1jEwKTCX5NUsr1", "src/conformance.ts"],
-];
+  ["examples/counter", "counter", "src/counter.ts"],
+  ["examples/token-vault", "token_vault", "src/token_vault.ts"],
+  ["examples/pda-profile", "pda_profile", "src/pda_profile.ts"],
+  ["examples/cpi/echo", "echo", "src/echo.ts"],
+  ["examples/cpi/relay", "relay", "src/relay.ts"],
+  ["conformance", "conformance", "src/conformance.ts"],
+].map(([dir, name, file]) => [dir, name, programId(dir), file]);
 
 test("compiler discriminators match the Anchor build IDL", () => {
   for (const [dir, name, id, file] of projects) {

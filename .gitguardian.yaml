@@ -1,0 +1,25 @@
+version: 2
+
+# Solana program addresses are 32-byte public keys encoded as base58.
+# They are the on-chain identity of a program (like an Ethereum address),
+# not secret keys. Example and conformance programs publish them in
+# axolotl.toml, declare_id!, and the IDL. Scanners often label that
+# base58 as a generic high-entropy secret.
+#
+# The matching ed25519 secret keys live in */keys/*.json. Those files
+# are real keypairs for throwaway localnet programs and are NOT ignored
+# here.
+secret:
+  ignored-matches:
+    - name: counter example program id
+      match: "8qUgK4vi5mPRKpGfTVto7FpWyBjNgfB6U6opToXWM585"
+    - name: token vault example program id
+      match: "4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3"
+    - name: pda profile example program id
+      match: "5kYGWFrmwpgL8xsCtPCwzdxWjZ3itbtmPqjk8sRNGiU3"
+    - name: echo example program id
+      match: "5MWt5tcVEsYHTh2tPJxnM8gRtvUpWa4E72tn2PzhaoXU"
+    - name: relay example program id
+      match: "6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c"
+    - name: conformance program id
+      match: "AU6PWDE1vrLgrcJpFvhWwDupTVHASu1jEwKTCX5NUsr1"
