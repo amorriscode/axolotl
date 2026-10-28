@@ -1,0 +1,16 @@
+[package]
+name = "relay"
+version = "0.1.0"
+description = "Calls the echo program through CPI"
+
+[program]
+id = "6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c"
+keypair = "keys/relay.json"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[toolchain]
+anchor = "1.2.2"
+solana = "4.1.2"

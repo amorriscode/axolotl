@@ -1,0 +1,17 @@
+{
+  "name": "@axolotl-sol/compiler",
+  "version": "0.2.0",
+  "description": "Compile a strict TypeScript subset to Anchor-compatible Solana programs",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "test": "node --test test/compile.test.ts"
+  }
+}

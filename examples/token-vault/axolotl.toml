@@ -1,0 +1,16 @@
+[package]
+name = "token_vault"
+version = "0.1.0"
+description = "SPL token vault using a PDA authority"
+
+[program]
+id = "4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3"
+keypair = "keys/token_vault.json"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[toolchain]
+anchor = "1.2.2"
+solana = "4.1.2"

@@ -1,0 +1,12 @@
+{
+  "name": "@axolotl-sol/core",
+  "version": "0.2.0",
+  "description": "Type-level standard library for Axolotl Solana programs",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": ["src"]
+}

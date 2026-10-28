@@ -1,0 +1,29 @@
+{
+  "name": "axolotl",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples/counter",
+    "examples/token-vault",
+    "examples/pda-profile",
+    "examples/cpi/echo",
+    "examples/cpi/relay",
+    "conformance",
+    "site"
+  ],
+  "scripts": {
+    "test": "npm run test -w @axolotl-sol/compiler && npm run test -w @axolotl-sol/client",
+    "build:programs": "node scripts/build-programs.ts",
+    "conformance": "node scripts/conformance.ts",
+    "site:build": "npm run build -w site",
+    "check-updates": "node scripts/check-updates.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

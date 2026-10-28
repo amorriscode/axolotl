@@ -1,0 +1,17 @@
+{
+  "name": "@axolotl-sol/cli",
+  "version": "0.2.0",
+  "description": "Axolotl command line: build, test, and deploy TypeScript Solana programs",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "axolotl": "./bin/axolotl.js"
+  },
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "dependencies": {
+    "@axolotl-sol/compiler": "*",
+    "@axolotl-sol/core": "*"
+  }
+}

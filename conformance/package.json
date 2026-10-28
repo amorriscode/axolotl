@@ -1,0 +1,12 @@
+{
+  "name": "@axolotl-sol/conformance",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "dependencies": {
+    "@axolotl-sol/compiler": "*",
+    "@axolotl-sol/client": "*",
+    "@axolotl-sol/core": "*",
+    "@axolotl-sol/testing": "*"
+  }
+}

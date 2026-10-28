@@ -1,0 +1,16 @@
+[package]
+name = "conformance"
+version = "0.1.0"
+description = "Axolotl conformance program"
+
+[program]
+id = "AU6PWDE1vrLgrcJpFvhWwDupTVHASu1jEwKTCX5NUsr1"
+keypair = "keys/conformance.json"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[toolchain]
+anchor = "1.2.2"
+solana = "4.1.2"

@@ -1,0 +1,6 @@
+{
+  "name": "@axolotl-sol/examples-token-vault",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module"
+}

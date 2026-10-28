@@ -1,0 +1,20 @@
+[package]
+name = "echo"
+version = "0.1.0"
+description = "Callee used by the CPI example"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "echo"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+default = []
+
+[dependencies]
+anchor-lang = "1.2.2"

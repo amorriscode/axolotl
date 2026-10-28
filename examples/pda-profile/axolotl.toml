@@ -1,0 +1,16 @@
+[package]
+name = "pda_profile"
+version = "0.1.0"
+description = "User profile stored at a PDA"
+
+[program]
+id = "5kYGWFrmwpgL8xsCtPCwzdxWjZ3itbtmPqjk8sRNGiU3"
+keypair = "keys/pda_profile.json"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[toolchain]
+anchor = "1.2.2"
+solana = "4.1.2"

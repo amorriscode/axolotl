@@ -1,0 +1,17 @@
+[toolchain]
+anchor_version = "1.2.2"
+solana_version = "4.1.2"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+token_vault = "4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "axolotl test"

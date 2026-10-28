@@ -1,12 +1,16 @@
 /target
-
-# TypeScript Library
 node_modules/
 dist/
-
-# Used for development
-sample.ts
-dev_project
-
-# MacOS
 .DS_Store
+
+# Generated Anchor build output
+examples/**/target
+examples/**/test-ledger
+conformance/target
+.anchor-target/
+site/dist
+
+# Local toolchains and editor files
+.solana/
+*.log
+site/dist

@@ -1,0 +1,14 @@
+{
+  "name": "@axolotl-sol/client",
+  "version": "0.2.0",
+  "description": "Encode and decode Axolotl / Anchor instructions without a network connection",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --test test/borsh.test.ts"
+  }
+}
