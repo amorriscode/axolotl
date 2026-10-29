@@ -1,6 +1,6 @@
 # Devnet
 
-The example programs are **not deployed on devnet**. There are no transaction signatures and no Solana Explorer transaction links, because the throwaway deployer never received SOL. The example sources have changed since that attempt. They were not redeployed.
+The example programs are **not deployed on devnet**. There are no transaction signatures and no Solana Explorer transaction links, because the throwaway deployer never received SOL. The example sources have changed since that attempt, including `echo.setValue` now requiring the authority signer that `relay` forwards. They were not redeployed.
 
 Checked at `2026-10-29T16:14:14Z` against `https://api.devnet.solana.com`.
 

@@ -18,6 +18,7 @@ export type IrExpr =
   | { t: "logic"; op: "&&" | "||"; left: IrExpr; right: IrExpr }
   | { t: "not"; expr: IrExpr }
   | { t: "neg"; expr: IrExpr }
+  | { t: "ixIndex"; account: string }
   | { t: "text"; rust: string };
 
 export type IrStmt =
@@ -26,6 +27,12 @@ export type IrStmt =
   | { t: "require"; cond: IrExpr; error: string }
   | { t: "if"; cond: IrExpr; then: IrStmt[]; else: IrStmt[] }
   | { t: "while"; cond: IrExpr; body: IrStmt[] }
+  | { t: "for"; name: string; ty: string; init: IrExpr; bound: IrExpr; body: IrStmt[] }
+  | { t: "set"; place: IrExpr; value: IrExpr }
+  | { t: "match"; scrutinee: IrExpr; arms: { pattern: string; body: IrStmt[] }[] }
+  | { t: "return"; value?: IrExpr }
+  | { t: "continue" }
+  | { t: "break" }
   | { t: "block"; body: IrStmt[] }
   | { t: "text"; text: string };
 

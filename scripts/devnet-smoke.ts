@@ -607,6 +607,7 @@ async function runCpi(
     ix(relay.id, [
       meta(echo.id, "r"),
       meta(dataAccount.address, "w"),
+      meta(payer.address, "rs", payer),
     ], encodeInstruction(relay.idl, "relay", { value: 42n })),
   ]);
   const stored = await rpc.getAccountInfo(dataAccount.address, { encoding: "base64", commitment: "confirmed" }).send();

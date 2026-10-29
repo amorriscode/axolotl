@@ -195,7 +195,7 @@ pub mod conformance {
     }
 
     pub fn read_index(ctx: Context<ReadIndex>) -> Result<u16> {
-        return Ok({ let __ax_info = ctx.accounts.instructions.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; let __ax_len = __ax_data.len(); u16::from_le_bytes([__ax_data[__ax_len - 2], __ax_data[__ax_len - 1]]) });
+        return Ok({ let __ax_info = ctx.accounts.instructions.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; let __ax_len = __ax_data.len(); if __ax_len < 2 { return Err(AxolotlError::AccountTooSmall.into()); } let __ax_bytes = __ax_data.get(__ax_len - 2..__ax_len).ok_or(AxolotlError::AccountTooSmall)?; u16::from_le_bytes(__ax_bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?) });
     }
 
     pub fn open_ata(ctx: Context<OpenAta>) -> Result<()> {
@@ -656,13 +656,15 @@ pub struct PingCpi<'info> {
 
 #[derive(Accounts)]
 pub struct AskEcho<'info> {
-    /// CHECK: The program does not check this account's owner or discriminator.
+    /// CHECK: executable is required; the owner is the loader, which Anchor's Program<T> would also check.
+    #[account(executable)]
     pub echo_program: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct Fanout<'info> {
-    /// CHECK: The program does not check this account's owner or discriminator.
+    /// CHECK: executable is required; the owner is the loader, which Anchor's Program<T> would also check.
+    #[account(executable)]
     pub echo_program: UncheckedAccount<'info>,
     /// CHECK: The program does not check this account's owner or discriminator.
     #[account(seeds = [b"left", user.key().as_ref()], bump)]
@@ -736,7 +738,8 @@ pub struct CheckForeign<'info> {
     /// CHECK: The program does not check this account's owner or discriminator.
     #[account(seeds = [b"mark"], bump, seeds::program = echo_program.key())]
     pub marker: UncheckedAccount<'info>,
-    /// CHECK: The program does not check this account's owner or discriminator.
+    /// CHECK: executable is required; the owner is the loader, which Anchor's Program<T> would also check.
+    #[account(executable)]
     pub echo_program: UncheckedAccount<'info>,
 }
 
@@ -822,12 +825,12 @@ pub enum AxolotlError {
     StringTooLong,
     #[msg("Vec is already at its maximum length")]
     VecFull,
+    #[msg("Account data is shorter than the read")]
+    AccountTooSmall,
     #[msg("CPI wrote no return data")]
     NoReturnData,
     #[msg("Return data came from a different program")]
     WrongReturnProgram,
-    #[msg("Account or return data is shorter than the read")]
-    AccountTooSmall,
     #[msg("Precompile mismatch")]
     PrecompileMismatch,
     #[msg("Arithmetic overflow or division by zero")]
@@ -945,6 +948,11 @@ mod ax_codec {
         if cursor + len > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
         Ok((Pubkey::new_from_array(program_id), data[cursor..cursor + len].to_vec()))
     }
+    // ed25519 rejects every index but u16::MAX: the pubkey and the message must
+    // live in the signature instruction. secp256k1 follows the index the
+    // instruction names, and 0xff means this instruction, because that is
+    // what the precompile itself does. Both policies are safe. They differ
+    // because the two precompiles differ.
     pub fn check_ed25519(ix: &AccountInfo, index: usize, pubkey: &[u8; 32], message: &[u8]) -> Result<bool> {
         let (program_id, data) = instruction_at(ix, index)?;
         let ed = pubkey!("Ed25519SigVerify111111111111111111111111111");

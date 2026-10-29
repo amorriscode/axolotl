@@ -12,8 +12,8 @@ pub mod relay {
         let mut __ax_data = Vec::new();
         __ax_data.extend_from_slice(&[253u8, 214u8, 48u8, 201u8, 100u8, 201u8, 227u8, 219u8]);
         ax_codec::push_u64(&mut __ax_data, value);
-        let __ax_ix = anchor_lang::solana_program::instruction::Instruction { program_id: ctx.accounts.echo_program.key(), accounts: vec![anchor_lang::solana_program::instruction::AccountMeta::new(ctx.accounts.data.key(), false)], data: __ax_data };
-        anchor_lang::solana_program::program::invoke(&__ax_ix, &[ctx.accounts.data.to_account_info()])?;
+        let __ax_ix = anchor_lang::solana_program::instruction::Instruction { program_id: ctx.accounts.echo_program.key(), accounts: vec![anchor_lang::solana_program::instruction::AccountMeta::new(ctx.accounts.data.key(), false), anchor_lang::solana_program::instruction::AccountMeta::new_readonly(ctx.accounts.authority.key(), true)], data: __ax_data };
+        anchor_lang::solana_program::program::invoke(&__ax_ix, &[ctx.accounts.data.to_account_info(), ctx.accounts.authority.to_account_info()])?;
         Ok(())
     }
 
@@ -21,11 +21,13 @@ pub mod relay {
 
 #[derive(Accounts)]
 pub struct Relay<'info> {
-    /// CHECK: The program does not check this account's owner or discriminator.
+    /// CHECK: executable is required; the owner is the loader, which Anchor's Program<T> would also check.
+    #[account(executable)]
     pub echo_program: UncheckedAccount<'info>,
     /// CHECK: The program does not check this account's owner or discriminator.
     #[account(mut)]
     pub data: UncheckedAccount<'info>,
+    pub authority: Signer<'info>,
 }
 
 #[error_code]
@@ -145,6 +147,11 @@ mod ax_codec {
         if cursor + len > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
         Ok((Pubkey::new_from_array(program_id), data[cursor..cursor + len].to_vec()))
     }
+    // ed25519 rejects every index but u16::MAX: the pubkey and the message must
+    // live in the signature instruction. secp256k1 follows the index the
+    // instruction names, and 0xff means this instruction, because that is
+    // what the precompile itself does. Both policies are safe. They differ
+    // because the two precompiles differ.
     pub fn check_ed25519(ix: &AccountInfo, index: usize, pubkey: &[u8; 32], message: &[u8]) -> Result<bool> {
         let (program_id, data) = instruction_at(ix, index)?;
         let ed = pubkey!("Ed25519SigVerify111111111111111111111111111");

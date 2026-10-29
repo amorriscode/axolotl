@@ -7,7 +7,7 @@
 
 import ts from "typescript";
 import { Diagnostics, locOf, type Loc } from "./diagnostics.ts";
-import type { IrExpr } from "./ir.ts";
+import type { IrExpr, IrStmt } from "./ir.ts";
 import { renderExpr, renderStmt } from "./print.ts";
 import type {
   AccountParam,
@@ -80,8 +80,6 @@ interface LowerContext {
   inConstraint: boolean;
   inMatch: boolean;
   guarded: Set<string>;
-  loops: ("for" | "while")[];
-  forStep: string | null;
   armFields: Map<string, Expr>;
   cpiRead?: Expr;
 }
@@ -135,8 +133,6 @@ export function lowerProgram(
       inConstraint: false,
       inMatch: false,
       guarded: new Set(),
-      loops: [],
-      forStep: null,
       armFields: new Map(),
     };
     const before = diag.items.length;
@@ -217,8 +213,6 @@ function helperContext(
     inConstraint: false,
     inMatch: false,
     guarded: new Set(),
-    loops: [],
-    forStep: null,
     armFields: new Map(),
   };
 }
@@ -259,6 +253,31 @@ function validateAccounts(instruction: ParsedInstruction, structs: StructModel[]
     }
     if (opts.realloc !== undefined && !opts.payer) diag.error(instruction.file, param.loc.line, param.loc.column, `realloc on "${param.name}" needs a payer.`);
     if (opts.optional && (opts.init || opts.initIfNeeded)) diag.error(instruction.file, param.loc.line, param.loc.column, "Optional accounts cannot be initialized in the same instruction.");
+    if (opts.optional && opts.constraint) {
+      diag.error(
+        instruction.file,
+        param.loc.line,
+        param.loc.column,
+        `"${param.name}" is optional, so a constraint cannot read its fields. Anchor checks constraints before the instruction body. Use \`if (present(${param.name}))\` there.`,
+      );
+    }
+    if (opts.optional) {
+      const early: string[] = [];
+      if (opts.hasOne.length > 0) early.push("hasOne");
+      if (opts.close) early.push("close");
+      if (opts.realloc !== undefined) early.push("realloc");
+      if (opts.owner) early.push("owner");
+      if (opts.tokenMint || opts.tokenAuthority) early.push("tokenMint/tokenAuthority");
+      if (opts.associatedMint || opts.associatedAuthority) early.push("associatedMint/associatedAuthority");
+      for (const attr of early) {
+        diag.error(
+          instruction.file,
+          param.loc.line,
+          param.loc.column,
+          `"${param.name}" is optional, so ${attr} cannot run before the body. Anchor checks it before the instruction. Use \`if (present(${param.name}))\` there.`,
+        );
+      }
+    }
     if (opts.seeds.length > 0 && !opts.bump) {
       diag.error(instruction.file, param.loc.line, param.loc.column, `seeds require bump: true.`);
     }
@@ -333,7 +352,11 @@ function bumpAssignments(ctx: LowerContext): Stmt[] {
     const struct = ctx.structs.find((item) => item.name === account.accountType);
     const bump = struct?.fields.find((field) => field.name === "bump" && field.ty === "u8");
     if (!bump) continue;
-    stmts.push({ code: `ctx.accounts.${account.rustName}.${bump.rustName} = ctx.bumps.${account.rustName};` });
+    stmts.push(statement({
+      t: "set",
+      place: { t: "text", rust: `ctx.accounts.${account.rustName}.${bump.rustName}` },
+      value: { t: "text", rust: `ctx.bumps.${account.rustName}` },
+    }));
   }
   return stmts;
 }
@@ -343,11 +366,8 @@ function lowerStmt(node: ts.Statement, ctx: LowerContext): Stmt[] {
   if (ts.isBlock(node)) return lowerBlock(node, ctx, false).stmts;
   if (ts.isEmptyStatement(node)) return [];
   if (ts.isReturnStatement(node)) return lowerReturn(node, ctx, loc);
-  if (ts.isBreakStatement(node)) return ctx.inMatch ? [] : [{ code: "break;", loc }];
-  if (ts.isContinueStatement(node)) {
-    if (ctx.loops.at(-1) === "for" && ctx.forStep) return [{ code: `${ctx.forStep};`, loc }, { code: "continue;", loc }];
-    return [{ code: "continue;", loc }];
-  }
+  if (ts.isBreakStatement(node)) return ctx.inMatch ? [] : [statement({ t: "break" }, loc)];
+  if (ts.isContinueStatement(node)) return [statement({ t: "continue" }, loc)];
   if (ts.isVariableStatement(node)) return lowerVar(node, ctx, loc);
   if (ts.isIfStatement(node)) return lowerIf(node, ctx, loc);
   if (ts.isWhileStatement(node)) return lowerWhile(node, ctx, loc);
@@ -359,7 +379,7 @@ function lowerStmt(node: ts.Statement, ctx: LowerContext): Stmt[] {
 }
 
 function lowerReturn(node: ts.ReturnStatement, ctx: LowerContext, loc: Loc): Stmt[] {
-  if (!node.expression) return [{ code: "return Ok(());", loc }];
+  if (!node.expression) return [statement({ t: "return" }, loc)];
   if (!ctx.returnType) {
     ctx.diag.errorAt(ctx.sf, node, "This function does not return a value. Use `return;` or add a scalar return type.");
     return [];
@@ -368,7 +388,7 @@ function lowerReturn(node: ts.ReturnStatement, ctx: LowerContext, loc: Loc): Stm
   if (!expr) return [];
   const concrete = adapt(expr, ctx.returnType, ctx, node.expression);
   if (!concrete) return [];
-  return [...takePending(ctx), { code: `return Ok(${concrete.rust});`, loc }];
+  return [...takePending(ctx), statement({ t: "return", value: irOf(concrete) }, loc)];
 }
 
 function lowerWhile(node: ts.WhileStatement, ctx: LowerContext, loc: Loc): Stmt[] {
@@ -380,15 +400,14 @@ function lowerWhile(node: ts.WhileStatement, ctx: LowerContext, loc: Loc): Stmt[
   if (!cond) return [];
   const concrete = adapt(cond, "bool", ctx, node.expression);
   if (!concrete) return [];
-  ctx.loops.push("while");
+  const prelude = takePending(ctx);
   const body = lowerBlock(node.statement, ctx, false).stmts;
-  ctx.loops.pop();
   const ir: import("./ir.ts").IrStmt = {
     t: "while",
     cond: irOf(concrete),
     body: body.map((item) => item.ir ?? { t: "text", text: item.code }),
   };
-  return [...takePending(ctx), statement(ir, loc)];
+  return [...prelude, statement(ir, loc)];
 }
 
 function takePending(ctx: LowerContext): Stmt[] {
@@ -449,6 +468,7 @@ function lowerIf(node: ts.IfStatement, ctx: LowerContext, loc: Loc): Stmt[] {
   if (!cond) return [];
   const concrete = adapt(cond, "bool", ctx, node.expression);
   if (!concrete) return [];
+  const prelude = takePending(ctx);
   const saved = new Set(ctx.guarded);
   for (const name of guardedBy(node.expression)) ctx.guarded.add(name);
   const thenStmts = lowerBlock(node.thenStatement, ctx, false).stmts;
@@ -458,7 +478,7 @@ function lowerIf(node: ts.IfStatement, ctx: LowerContext, loc: Loc): Stmt[] {
     if (ts.isIfStatement(node.elseStatement)) elseStmts = lowerIf(node.elseStatement, ctx, locOf(ctx.sf, node.elseStatement));
     else if (ts.isBlock(node.elseStatement)) elseStmts = lowerBlock(node.elseStatement, ctx, false).stmts;
   }
-  return [...takePending(ctx), statement({
+  return [...prelude, statement({
     t: "if",
     cond: irOf(concrete),
     then: thenStmts.map((item) => item.ir ?? { t: "text", text: item.code }),
@@ -504,9 +524,19 @@ function lowerConstraint(source: string, ctx: LowerContext, where: Loc): string 
   const concrete = expr ? adapt(expr, "bool", ctx, init) : null;
   ctx.sf = savedSf;
   ctx.inConstraint = saved;
-  ctx.diag.items.splice(before);
-  if (!concrete || concrete.rust.includes("?")) {
+  for (const item of ctx.diag.items.slice(before)) {
+    item.file = where.file;
+    item.line = where.line;
+    item.column = where.column;
+  }
+  if (concrete?.rust.includes("?")) {
     ctx.diag.error(where.file, where.line, where.column, `constraint \`${source}\` must be a boolean expression without arithmetic.`);
+    return null;
+  }
+  if (!concrete) {
+    if (ctx.diag.items.length === before) {
+      ctx.diag.error(where.file, where.line, where.column, `constraint \`${source}\`: expected a boolean expression.`);
+    }
     return null;
   }
   return concrete.rust;
@@ -514,26 +544,27 @@ function lowerConstraint(source: string, ctx: LowerContext, where: Loc): string 
 
 function lowerSwitch(node: ts.SwitchStatement, ctx: LowerContext, loc: Loc): Stmt[] {
   let enumName = "";
-  let rustScrutinee = "";
+  let scrutineeIr: IrExpr = { t: "text", rust: "" };
   let dataArg: string | null = null;
   const scrutinee = node.expression;
   if (ts.isPropertyAccessExpression(scrutinee) && scrutinee.name.text === "kind" && ts.isIdentifier(scrutinee.expression)) {
     const arg = ctx.scope.args.get(scrutinee.expression.text);
     if (arg && typeof arg.ty !== "string" && "enum" in arg.ty) {
       enumName = arg.ty.enum;
-      rustScrutinee = arg.rustName;
+      scrutineeIr = { t: "name", name: arg.rustName };
       dataArg = scrutinee.expression.text;
     }
   }
   if (!enumName) {
-    const expr = lowerExpr(scrutinee, ctx);
-    if (!expr || typeof expr.ty === "string" || !("enum" in expr.ty)) {
+    const lowered = lowerExpr(scrutinee, ctx);
+    if (!lowered || typeof lowered.ty === "string" || !("enum" in lowered.ty)) {
       ctx.diag.errorAt(ctx.sf, scrutinee, "switch must be on an enum or on `value.kind` for a data-carrying enum.");
       return [];
     }
-    enumName = expr.ty.enum;
-    rustScrutinee = expr.rust;
+    enumName = lowered.ty.enum;
+    scrutineeIr = irOf(lowered);
   }
+  const prelude = takePending(ctx);
   const variants = ctx.enums.get(enumName);
   if (!variants) {
     ctx.diag.errorAt(ctx.sf, scrutinee, `Unknown enum ${enumName}.`);
@@ -547,7 +578,7 @@ function lowerSwitch(node: ts.SwitchStatement, ctx: LowerContext, loc: Loc): Stm
       return [];
     }
   }
-  const arms: string[] = [];
+  const arms: { pattern: string; body: IrStmt[] }[] = [];
   const seen = new Set<string>();
   let hasDefault = false;
   for (const clause of node.caseBlock.clauses) {
@@ -557,7 +588,7 @@ function lowerSwitch(node: ts.SwitchStatement, ctx: LowerContext, loc: Loc): Stm
       ctx.inMatch = true;
       const body = lowerCase(clause.statements, ctx);
       ctx.inMatch = savedMatch;
-      arms.push(`_ => {\n${indent(body)}\n}`);
+      arms.push({ pattern: "_", body: body.map((item) => item.ir ?? { t: "text", text: item.code }) });
       continue;
     }
     const label = clause.expression;
@@ -589,13 +620,13 @@ function lowerSwitch(node: ts.SwitchStatement, ctx: LowerContext, loc: Loc): Stm
     const pattern = variant.fields.length
       ? `${enumName}::${variant.rustName} { ${variant.fields.map((field) => field.rustName).join(", ")} }`
       : `${enumName}::${variant.rustName}`;
-    arms.push(`${pattern} => {\n${indent(body)}\n}`);
+    arms.push({ pattern, body: body.map((item) => item.ir ?? { t: "text", text: item.code }) });
   }
   if (!hasDefault && seen.size !== variants.length) {
     ctx.diag.errorAt(ctx.sf, node, `switch on ${enumName} must cover every variant or have a default.`);
     return [];
   }
-  return [{ code: `match ${rustScrutinee} {\n${indent(arms.map((arm) => ({ code: arm })))}\n}`, loc }];
+  return [...prelude, statement({ t: "match", scrutinee: scrutineeIr, arms }, loc)];
 }
 
 function endsWithBreak(statement: ts.Statement | undefined): boolean {
@@ -655,19 +686,18 @@ function lowerFor(node: ts.ForStatement, ctx: LowerContext, loc: Loc): Stmt[] {
     return [];
   }
   ctx.scope.locals.set(name, { rustName, ty: initConcrete.ty, mutable: true });
-  const step = `${rustName} = ${rustName}.checked_add(${rustLiteral(1n, initConcrete.ty)}).ok_or(AxolotlError::ArithmeticOverflow)?`;
-  const savedStep = ctx.forStep;
-  ctx.forStep = step;
-  ctx.loops.push("for");
+  const prelude = takePending(ctx);
   const body = lowerBlock(node.statement, ctx, false).stmts;
-  ctx.loops.pop();
-  ctx.forStep = savedStep;
   ctx.scope.locals.delete(name);
   ctx.usesArithmetic = true;
-  return [{
-    code: `{\n    let mut ${rustName}: ${rustTy(initConcrete.ty)} = ${initConcrete.rust};\n    while ${rustName} < ${boundConcrete.rust} {\n${indent(body, 2)}\n        ${step};\n    }\n}`,
-    loc,
-  }];
+  return [...prelude, statement({
+    t: "for",
+    name: rustName,
+    ty: rustTy(initConcrete.ty),
+    init: irOf(initConcrete),
+    bound: irOf(boundConcrete),
+    body: body.map((item) => item.ir ?? { t: "text", text: item.code }),
+  }, loc)];
 }
 
 function isPlusOne(node: ts.Expression, name: string): boolean {
@@ -1320,37 +1350,25 @@ function accountRoot(account: AccountParam, ctx: LowerContext): string {
   return `ctx.accounts.${account.rustName}`;
 }
 
-function readU64(account: string, offset: number, ctx: LowerContext): string {
-  noteError(ctx, "AccountTooSmall", "Account data is shorter than the read");
-  return `{ let __ax_info = ctx.accounts.${account}.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; let __ax_bytes = __ax_data.get(${offset}..${offset + 8}).ok_or(AxolotlError::AccountTooSmall)?; u64::from_le_bytes(__ax_bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?) }`;
-}
-
 function accountField(account: AccountParam, field: string, ctx: LowerContext, node: ts.Node): Expr | null {
   if (field === "key" && account.accountKind !== "remaining") {
+    if (account.opts.optional && !ctx.guarded.has(account.name)) {
+      ctx.diag.errorAt(ctx.sf, node, `"${account.name}" is optional. Read it inside \`if (present(${account.name})) { ... }\`.`);
+      return null;
+    }
+    if (account.opts.optional) {
+      const root = accountRoot(account, ctx);
+      return expr(`${root}.key()`, "pubkey");
+    }
     const prefix = ctx.inConstraint ? account.rustName : `ctx.accounts.${account.rustName}`;
     return { rust: `${prefix}.key()`, ty: "pubkey" };
-  }
-  if (account.accountKind === "fees" && field === "lamportsPerSignature") {
-    return expr(readU64(account.rustName, 0, ctx), "u64");
-  }
-  if (account.accountKind === "lastRestart" && field === "slot") {
-    return expr(readU64(account.rustName, 0, ctx), "u64");
-  }
-  if ((account.accountKind === "recentBlockhashes" || account.accountKind === "slotHistory" || account.accountKind === "epochRewards") && field === "bytes") {
-    return { rust: `(ctx.accounts.${account.rustName}.to_account_info().data_len() as u64)`, ty: "u64" };
   }
   if (account.accountKind === "remaining" && field === "count") {
     return { rust: "(ctx.remaining_accounts.len() as u64)", ty: "u64" };
   }
   if (account.accountKind === "instructions" && field === "index") {
-    const info = `ctx.accounts.${account.rustName}.to_account_info()`;
-    return {
-      rust: `{ let __ax_info = ${info}; let __ax_data = __ax_info.try_borrow_data()?; let __ax_len = __ax_data.len(); u16::from_le_bytes([__ax_data[__ax_len - 2], __ax_data[__ax_len - 1]]) }`,
-      ty: "u16",
-    };
-  }
-  if ((account.accountKind === "slotHashes" || account.accountKind === "stakeHistory") && field === "bytes") {
-    return { rust: `(ctx.accounts.${account.rustName}.to_account_info().data_len() as u64)`, ty: "u64" };
+    noteError(ctx, "AccountTooSmall", "Account data is shorter than the read");
+    return fromIr({ t: "ixIndex", account: account.rustName }, "u16");
   }
   if (account.accountKind === "epochSchedule") {
     const names: Record<string, { rust: string; ty: Scalar }> = {
@@ -1368,7 +1386,7 @@ function accountField(account: AccountParam, field: string, ctx: LowerContext, n
     return { rust: `ctx.accounts.${account.rustName}.${found.rust}`, ty: found.ty };
   }
   if (account.accountKind === "user" && account.accountType) {
-    if (account.opts.optional && !ctx.guarded.has(account.name) && !ctx.inConstraint) {
+    if (account.opts.optional && !ctx.guarded.has(account.name)) {
       ctx.diag.errorAt(ctx.sf, node, `"${account.name}" is optional. Read it inside \`if (present(${account.name})) { ... }\`.`);
       return null;
     }
@@ -1415,7 +1433,7 @@ function lowerUnary(node: ts.PrefixUnaryExpression, ctx: LowerContext, expected?
     if (!inner) return null;
     const concrete = adapt(inner, "bool", ctx, node.operand);
     if (!concrete) return null;
-    return { rust: `!(${concrete.rust})`, ty: "bool" };
+    return fromIr({ t: "not", expr: irOf(concrete) }, "bool");
   }
   if (node.operator === ts.SyntaxKind.MinusToken) {
     const inner = lowerExpr(node.operand, ctx, expected);
@@ -1434,7 +1452,7 @@ function lowerUnary(node: ts.PrefixUnaryExpression, ctx: LowerContext, expected?
       return null;
     }
     ctx.usesArithmetic = true;
-    return { rust: `${inner.rust}.checked_neg().ok_or(AxolotlError::ArithmeticOverflow)?`, ty: inner.ty };
+    return fromIr({ t: "neg", expr: irOf(inner) }, inner.ty);
   }
   ctx.diag.errorAt(ctx.sf, node, "Unsupported unary operator.");
   return null;
@@ -1477,15 +1495,15 @@ function lowerBinary(node: ts.BinaryExpression, ctx: LowerContext, expected?: Sc
     const cmp = compare[op] as "==" | "!=" | "<" | "<=" | ">" | ">=";
     return fromIr({ t: "cmp", op: cmp, left: irOf(pair.left), right: irOf(pair.right) }, "bool");
   }
-  const math: Partial<Record<ts.SyntaxKind, string>> = {
-    [ts.SyntaxKind.PlusToken]: "checked_add",
-    [ts.SyntaxKind.MinusToken]: "checked_sub",
-    [ts.SyntaxKind.AsteriskToken]: "checked_mul",
-    [ts.SyntaxKind.SlashToken]: "checked_div",
-    [ts.SyntaxKind.PercentToken]: "checked_rem",
+  const math: Partial<Record<ts.SyntaxKind, "add" | "sub" | "mul" | "div" | "rem">> = {
+    [ts.SyntaxKind.PlusToken]: "add",
+    [ts.SyntaxKind.MinusToken]: "sub",
+    [ts.SyntaxKind.AsteriskToken]: "mul",
+    [ts.SyntaxKind.SlashToken]: "div",
+    [ts.SyntaxKind.PercentToken]: "rem",
   };
-  const method = math[op];
-  if (!method) {
+  const checkOp = math[op];
+  if (!checkOp) {
     ctx.diag.errorAt(ctx.sf, node, "Unsupported operator.");
     return null;
   }
@@ -1496,9 +1514,7 @@ function lowerBinary(node: ts.BinaryExpression, ctx: LowerContext, expected?: Sc
     return null;
   }
   ctx.usesArithmetic = true;
-  const checkOp = method === "checked_add" ? "add" : method === "checked_sub" ? "sub" : method === "checked_mul" ? "mul" : method === "checked_div" ? "div" : "rem";
-  const ir: IrExpr = { t: "check", op: checkOp, left: irOf(pair.left), right: irOf(pair.right) };
-  return fromIr(ir, pair.left.ty);
+  return fromIr({ t: "check", op: checkOp, left: irOf(pair.left), right: irOf(pair.right) }, pair.left.ty);
 }
 
 function pairExprs(leftNode: ts.Expression, rightNode: ts.Expression, ctx: LowerContext, expected?: Scalar): { left: Expr; right: Expr } | null {

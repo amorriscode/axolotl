@@ -48,6 +48,35 @@ test("encodes a signed integer and a pubkey argument", () => {
   assert.equal(decoded.flag, true);
 });
 
+test("a short account and a zero inside bytes32 do not decode quietly", () => {
+  const idl = {
+    accounts: [{ name: "Profile", discriminator: [9, 9, 9, 9, 9, 9, 9, 9] }],
+    types: [{
+      name: "Profile",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "nick", type: { array: ["u8", 32] } },
+          { name: "count", type: "u64" },
+        ],
+      },
+    }],
+  };
+  assert.throws(() => decodeAccount(idl, "Profile", Uint8Array.from([9, 9, 9, 9, 9, 9, 9, 9])), /need 32 bytes/);
+  const data = new Uint8Array(8 + 32 + 8);
+  data.set([9, 9, 9, 9, 9, 9, 9, 9]);
+  data[8] = "h".charCodeAt(0);
+  data[9] = "i".charCodeAt(0);
+  const decoded = decodeAccount(idl, "Profile", data);
+  assert.equal(typeof decoded.nick, "string");
+  assert.equal((decoded.nick as string).length, 32);
+  assert.equal((decoded.nick as string).charCodeAt(2), 0);
+  assert.throws(() => decodeAccount(idl, "Profile", data.subarray(0, 8 + 4)), /need 32 bytes at 8, have 12/);
+  const shortCount = data.slice();
+  shortCount.set(data.subarray(0, 8 + 32));
+  assert.throws(() => decodeAccount(idl, "Profile", data.subarray(0, 8 + 32)), /need 8 bytes/);
+});
+
 test("decodes an emit_cpi event from self-CPI instruction data", () => {
   const idl = {
     instructions: [],

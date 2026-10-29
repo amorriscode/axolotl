@@ -43,7 +43,7 @@ Account options are a type literal so both `tsc` and Axolotl can see them:
 | `close: "authority"` | At the end of the instruction, lamports go to this account. The destination must be a `Signer` or a base58 address |
 | `owner: "tokenProgram"` | Account owner must be that account's key, or a base58 address |
 | `address: "1111..."` | Account address must be that key, or another account's key |
-| `constraint: "counter.count > 0"` | Boolean expression over accounts and arguments. No arithmetic |
+| `constraint: "counter.count > 0"` | Boolean expression over accounts and arguments. No arithmetic. Cannot be placed on an optional account |
 | `program: "echoProgram"` | `seeds::program`. The PDA is derived under that program |
 | `executable: true` | The account must be a program |
 | `zero: true` | The client already created a zeroed account owned by this program |
@@ -54,9 +54,9 @@ Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `Token2022Progra
 
 `UncheckedAccount` does not check the owner. Do not use it for an authority. `hasOne` and `close` reject it.
 
-`optional: true` makes an account `Option`. Pass the program id when it is absent. A field read must sit inside `if (present(account)) { ... }`. `realloc: N` grows the account; the payer is the same `payer` option. `Vec<T, N>` stores at most N elements, and `push` fails with `VecFull` past that. `Str<N>` stores at most N bytes, and assignment fails with `StringTooLong`. Unit enums are one byte.
+`optional: true` makes an account `Option`. Pass the program id when it is absent. A field read, including `.key`, must sit inside `if (present(account)) { ... }`. A `constraint`, `hasOne`, `close`, `realloc`, `owner`, or token constraint cannot be placed on an optional account: Anchor checks those before the body, so they cannot sit inside `present()`. `realloc: N` grows the account; the payer is the same `payer` option. `Vec<T, N>` stores at most N elements, and `push` fails with `VecFull` past that. `Str<N>` stores at most N bytes, and assignment fails with `StringTooLong`. Unit enums are one byte.
 
-`TokenAccount` and `Mint` may be wrapped in `Account<TokenAccount, { mut: true }>`. `TokenProgram` accepts the SPL Token interface, so a client can pass the classic token program.
+`TokenAccount` and `Mint` may be wrapped in `Account<TokenAccount, { mut: true }>`. `TokenProgram` is the SPL token interface and is not pinned to the classic token program, in the IDL or in the program. `Token2022Program` is pinned to Token-2022 in both. `Program` means the account is executable. The owner is the loader. Use `UncheckedAccount` when the caller does not know the owner.
 
 Parameter order is the on-chain account order. `camelCase` names become `snake_case` in Rust and in the IDL, which is what Anchor emits.
 
@@ -147,7 +147,7 @@ cpi({
 
 `name` is the callee's TypeScript function name. Axolotl snake-cases it the same way it names the generated Rust function, then uses Anchor's `sha256("global:" + name)[..8]` discriminator.
 
-`Clock` exposes `unixTimestamp`, `slot`, and `epoch`. `Rent` exposes `minimumBalance(space)`. `EpochSchedule` exposes `slotsPerEpoch`, `leaderScheduleSlotOffset`, `warmup`, `firstNormalEpoch`, and `firstNormalSlot`. `Instructions` exposes `index`. `SlotHashes` and `StakeHistory` expose `bytes`, the account length.
+`Clock` exposes `unixTimestamp`, `slot`, and `epoch`. `Rent` exposes `minimumBalance(space)`. `EpochSchedule` exposes `slotsPerEpoch`, `leaderScheduleSlotOffset`, `warmup`, `firstNormalEpoch`, and `firstNormalSlot`. `Instructions` exposes `index`, and a short sysvar is `AccountTooSmall`.
 
 `token.createAssociatedAccount` creates an associated token account. The instruction must also take `AssociatedTokenProgram`, because the runtime only loads that program for CPI when its account is in the transaction. `token.mintTo` and `token.transferChecked` require `tokenMint` and `tokenAuthority` on every token account they touch. `cpiReturn<T>` reads the callee's return data and checks that it came from that program. `emitCpi` writes an Anchor self-CPI event. Clients decode that event from the inner instruction (`decodeEventInstructions`), not from `Program data:` logs.
 

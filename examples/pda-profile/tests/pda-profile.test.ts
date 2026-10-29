@@ -39,7 +39,7 @@ test("creates a PDA profile and emits a visit event", async () => {
   const data = decodeAccount(idl, "Profile", created.data);
   assert.equal(data.authority, world.payer.address);
   assert.equal(data.visits, 0n);
-  assert.equal(data.nickname, "ada");
+  assert.equal(data.nickname, "ada".padEnd(32, "\0"));
   assert.ok(created.lamports >= world.svm.minimumBalanceForRentExemption(BigInt(created.data.length)));
 
   const result = await send(world, [

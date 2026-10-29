@@ -152,7 +152,7 @@ test("integer, bool, and bytes32 fields round-trip", async () => {
   assert.equal(data.wide, 100_000);
   assert.equal(data.signed, -42n);
   assert.equal(data.flag, true);
-  assert.equal(data.nickname, "axolotl");
+  assert.equal(data.nickname, "axolotl".padEnd(32, "\0"));
 });
 
 test("clock sysvar is visible to the program", async () => {

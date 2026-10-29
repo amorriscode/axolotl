@@ -95,8 +95,7 @@ export type ArgTy =
 export type AccountKind =
   | "user" | "signer" | "system" | "tokenProgram" | "token2022" | "associatedToken" | "tokenAccount" | "mint"
   | "unchecked" | "systemAccount" | "clock" | "rent" | "program" | "remaining"
-  | "instructions" | "epochSchedule" | "slotHashes" | "stakeHistory"
-  | "fees" | "recentBlockhashes" | "slotHistory" | "lastRestart" | "epochRewards";
+  | "instructions" | "epochSchedule";
 
 export interface AccountParam {
   kind: "account";

@@ -115,8 +115,17 @@ class Reader {
   constructor(data: Uint8Array) {
     this.data = data;
   }
-  u8(): number { return this.data[this.offset++]!; }
+  need(size: number): void {
+    if (this.offset + size > this.data.length) {
+      throw new Error(`need ${size} bytes at ${this.offset}, have ${this.data.length}`);
+    }
+  }
+  u8(): number {
+    this.need(1);
+    return this.data[this.offset++]!;
+  }
   uint(size: number, signed = false): bigint {
+    this.need(size);
     let value = 0n;
     for (let i = 0; i < size; i++) value |= BigInt(this.data[this.offset++]!) << BigInt(i * 8);
     if (signed) {
@@ -126,6 +135,7 @@ class Reader {
     return value;
   }
   bytes(size: number): Uint8Array {
+    this.need(size);
     const out = this.data.subarray(this.offset, this.offset + size);
     this.offset += size;
     return out;
@@ -239,9 +249,10 @@ function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
   }
   if (typeof type === "object" && "array" in type) {
     const bytes = reader.bytes(type.array[1]);
-    let end = bytes.length;
-    while (end > 0 && bytes[end - 1] === 0) end--;
-    return new TextDecoder().decode(bytes.subarray(0, end));
+    if (type.array[0] !== "u8") throw new Error(`unsupported array element ${type.array[0]}`);
+    let text = "";
+    for (const byte of bytes) text += String.fromCharCode(byte);
+    return text;
   }
   if (typeof type !== "string") throw new Error(`unsupported IDL type ${JSON.stringify(type)}`);
   if (type === "bool") return reader.u8() !== 0;

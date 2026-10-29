@@ -40,6 +40,7 @@ test("relay sets echo state through CPI", async () => {
     instruction(relay.address, [
       meta(echo.address, "r"),
       meta(data.address, "w"),
+      meta(world.payer.address, "rs", world.payer),
     ], encodeInstruction(relay, "relay", { value: 42n })),
   ]);
   const stored = world.svm.getAccount(data.address);

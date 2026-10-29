@@ -9,8 +9,10 @@ pub mod echo {
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        let __ax_1 = 0u64;
-        ctx.accounts.data.value = __ax_1;
+        let __ax_1 = ctx.accounts.user.key();
+        ctx.accounts.data.authority = __ax_1;
+        let __ax_2 = 0u64;
+        ctx.accounts.data.value = __ax_2;
         Ok(())
     }
 
@@ -34,10 +36,11 @@ pub mod echo {
 
 #[account]
 pub struct EchoData {
+    pub authority: Pubkey,
     pub value: u64,
 }
 impl EchoData {
-    pub const INIT_SPACE: usize = 8;
+    pub const INIT_SPACE: usize = 40;
 }
 
 #[derive(Accounts)]
@@ -51,8 +54,9 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct SetValue<'info> {
-    #[account(mut)]
+    #[account(mut, has_one = authority)]
     pub data: Account<'info, EchoData>,
+    pub authority: Signer<'info>,
 }
 
 #[derive(Accounts)]

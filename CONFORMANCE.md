@@ -66,7 +66,7 @@ CARGO_TARGET_DIR=$PWD/.anchor-target npm run build:programs
 npm run conformance
 ```
 
-Failing rows are bugs. The table is Anchor's feature surface as Axolotl implements it.
+Failing rows are bugs. The language is defined in docs/language.md. This table is a regression list.
 
 ## Not on this scoreboard
 

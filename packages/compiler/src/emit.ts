@@ -27,43 +27,28 @@ const CLOCK = "SysvarC1ock11111111111111111111111111111111";
 const RENT = "SysvarRent111111111111111111111111111111111";
 const INSTRUCTIONS = "Sysvar1nstructions1111111111111111111111111";
 const EPOCH = "SysvarEpochSchedu1e111111111111111111111111";
-const SLOT_HASHES = "SysvarS1otHashes111111111111111111111111111";
-const STAKE_HISTORY = "SysvarStakeHistory1111111111111111111111111";
 const TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-const FEES = "SysvarFees111111111111111111111111111111111";
-const RECENT_BLOCKHASHES = "SysvarRecentB1ockHashes11111111111111111111";
-const SLOT_HISTORY = "SysvarS1otHistory11111111111111111111111111";
-const LAST_RESTART = "SysvarLastRestartS1ot1111111111111111111111";
-const EPOCH_REWARDS = "SysvarEpochRewards1111111111111111111111111";
 const ED25519 = "Ed25519SigVerify111111111111111111111111111";
 const SECP256K1 = "KeccakSecp256k11111111111111111111111111111";
 const ASSOCIATED_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-
 /**
- * Addresses that must appear in the IDL and, when the Rust type does not
- * already enforce them, in `#[account(address = ...)]`.
+ * One address decision per account kind.
+ *
+ * `type` — the Rust type already requires this address (`Program<System>`,
+ * `Sysvar<Clock>`), so the IDL records it and the attribute does not.
+ * `attribute` — the Rust type does not, so the IDL and `#[account(address)]`
+ * both record it.
+ * A kind that is absent (`tokenProgram`) is open in both.
  */
-const FIXED_ADDRESS: Partial<Record<AccountParam["accountKind"], string>> = {
-  system: SYSTEM_PROGRAM,
-  clock: CLOCK,
-  rent: RENT,
-  instructions: INSTRUCTIONS,
-  epochSchedule: EPOCH,
-  fees: FEES,
-  lastRestart: LAST_RESTART,
-  tokenProgram: TOKEN_PROGRAM,
-  token2022: TOKEN_2022,
-  associatedToken: ASSOCIATED_TOKEN,
+const ADDRESS: Partial<Record<AccountParam["accountKind"], { address: string; pin: "type" | "attribute" }>> = {
+  system: { address: SYSTEM_PROGRAM, pin: "type" },
+  clock: { address: CLOCK, pin: "type" },
+  rent: { address: RENT, pin: "type" },
+  epochSchedule: { address: EPOCH, pin: "type" },
+  instructions: { address: INSTRUCTIONS, pin: "attribute" },
+  token2022: { address: TOKEN_2022, pin: "attribute" },
+  associatedToken: { address: ASSOCIATED_TOKEN, pin: "attribute" },
 };
-
-const ADDRESS_IN_RUST = new Set<AccountParam["accountKind"]>([
-  "instructions",
-  "associatedToken",
-  "fees",
-  "lastRestart",
-  "token2022",
-]);
 
 export function emitRust(program: ProgramModel): { rust: string; sourceMap: SourceMap } {
   const lines: string[] = [];
@@ -233,10 +218,12 @@ function emitAccounts(
   for (const account of accounts) {
     if (account.accountKind === "remaining") continue;
     const attr = accountAttr(account, program);
-    const pinned = FIXED_ADDRESS[account.accountKind];
-    if (account.accountKind === "unchecked" || account.accountKind === "program" || (pinned && accountRustType(account, program).startsWith("Unchecked"))) {
+    const pinned = ADDRESS[account.accountKind];
+    if (account.accountKind === "program") {
+      push("    /// CHECK: executable is required; the owner is the loader, which Anchor's Program<T> would also check.", account.loc);
+    } else if (account.accountKind === "unchecked" || (pinned && accountRustType(account, program).startsWith("Unchecked"))) {
       const why = pinned
-        ? `Pinned to ${pinned}. The owner is not checked beyond that address.`
+        ? `Pinned to ${pinned.address}. The owner is not checked beyond that address.`
         : "The program does not check this account's owner or discriminator.";
       push(`    /// CHECK: ${why}`, account.loc);
     }
@@ -272,21 +259,19 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
   for (const rel of opts.hasOne) parts.push(`has_one = ${snake(rel)}`);
   if (opts.close) parts.push(`close = ${isPubkey(opts.close) ? `pubkey!("${opts.close}")` : snake(opts.close)}`);
   if (opts.owner) parts.push(`owner = ${pubkeyOrAccount(opts.owner)}`);
-  if (opts.address && !FIXED_ADDRESS[account.accountKind]) {
+  if (opts.address && !ADDRESS[account.accountKind]) {
     parts.push(`address = ${pubkeyOrAccount(opts.address)}`);
   }
   if (opts.constraintRust) parts.push(`constraint = ${opts.constraintRust}`);
   if (opts.seedsProgram) parts.push(`seeds::program = ${snake(opts.seedsProgram)}.key()`);
-  if (opts.executable) parts.push("executable");
+  if (opts.executable || account.accountKind === "program") parts.push("executable");
   if (opts.zero) parts.push("zero");
   if (opts.tokenMint) parts.push(`token::mint = ${snake(opts.tokenMint)}`);
   if (opts.tokenAuthority) parts.push(`token::authority = ${snake(opts.tokenAuthority)}`);
   if (opts.associatedMint) parts.push(`associated_token::mint = ${snake(opts.associatedMint)}`);
   if (opts.associatedAuthority) parts.push(`associated_token::authority = ${snake(opts.associatedAuthority)}`);
-  if (ADDRESS_IN_RUST.has(account.accountKind)) {
-    const fixed = FIXED_ADDRESS[account.accountKind];
-    if (fixed) parts.push(`address = pubkey!("${fixed}")`);
-  }
+  const fixed = ADDRESS[account.accountKind];
+  if (fixed?.pin === "attribute") parts.push(`address = pubkey!("${fixed.address}")`);
   return parts.join(", ");
 }
 
@@ -350,18 +335,8 @@ function accountRustType(account: AccountParam, program: ProgramModel): string {
       return "UncheckedAccount<'info>";
     case "epochSchedule":
       return "Sysvar<'info, EpochSchedule>";
-    case "slotHashes":
-    case "stakeHistory":
-    case "fees":
-    case "recentBlockhashes":
-    case "slotHistory":
-    case "lastRestart":
-    case "epochRewards":
-      return "UncheckedAccount<'info>";
     case "remaining":
       return "AccountInfo<'info>";
-    default:
-      return "UncheckedAccount<'info>";
   }
 }
 
@@ -433,6 +408,11 @@ function emitCodec(push: (text: string, loc?: Loc) => void): void {
   push("        if cursor + len > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }");
   push("        Ok((Pubkey::new_from_array(program_id), data[cursor..cursor + len].to_vec()))");
   push("    }");
+  push("    // ed25519 rejects every index but u16::MAX: the pubkey and the message must");
+  push("    // live in the signature instruction. secp256k1 follows the index the");
+  push("    // instruction names, and 0xff means this instruction, because that is");
+  push("    // what the precompile itself does. Both policies are safe. They differ");
+  push("    // because the two precompiles differ.");
   push("    pub fn check_ed25519(ix: &AccountInfo, index: usize, pubkey: &[u8; 32], message: &[u8]) -> Result<bool> {");
   push("        let (program_id, data) = instruction_at(ix, index)?;");
   push(`        let ed = pubkey!("${ED25519}");`);
@@ -548,8 +528,8 @@ function idlAccount(account: AccountParam): IdlAccount {
   const result: IdlAccount = { name: account.rustName };
   if (writable) result.writable = true;
   if (signer) result.signer = true;
-  const fixed = FIXED_ADDRESS[account.accountKind];
-  if (fixed) result.address = fixed;
+  const fixed = ADDRESS[account.accountKind];
+  if (fixed) result.address = fixed.address;
   if (account.opts.optional) result.optional = true;
   if (account.opts.seeds.length > 0) {
     result.pda = {
@@ -563,14 +543,26 @@ function idlAccount(account: AccountParam): IdlAccount {
   return result;
 }
 
+function clientArgType(ty: ArgParam["ty"]): string {
+  if (typeof ty !== "string") {
+    if ("option" in ty) return `${clientArgType(ty.option)} | null`;
+    if ("vec" in ty) return `${clientArgType(ty.vec)}[]`;
+    return "{ kind: string }";
+  }
+  if (ty === "bool") return "boolean";
+  if (ty === "string" || ty === "pubkey" || ty === "bytes32") return "string";
+  if (ty === "u64" || ty === "u128" || ty === "i64" || ty === "i128") return "bigint";
+  return "number";
+}
+
 export function emitClient(program: ProgramModel, idl: Idl): string {
   const builders = program.instructions.filter((item) => !item.failed).map((instruction) => {
     const accounts = instruction.params.filter((param): param is AccountParam => param.kind === "account" && param.accountKind !== "remaining");
     const args = instruction.params.filter((param): param is ArgParam => param.kind === "arg");
     const accountFields = accounts.map((account) => `${account.name}: string`).join("; ");
-    const argFields = args.map((arg) => `${arg.name}: unknown`).join("; ");
-    const order = accounts.map((account) => `{ name: ${JSON.stringify(account.name)}, address: accounts.${account.name} }`).join(", ");
-    const argObject = args.length ? `, { ${args.map((arg) => arg.name).join(", ")} }` : "";
+    const argFields = args.map((arg) => `${arg.name}: ${clientArgType(arg.ty)}`).join("; ");
+    const order = accounts.map((account) => `{ name: ${JSON.stringify(account.rustName)}, address: accounts.${account.name} }`).join(", ");
+    const argObject = args.length ? `, { ${args.map((arg) => `${arg.name}: args.${arg.name}`).join(", ")} }` : "";
     const argParam = args.length ? `, args: { ${argFields} }` : "";
     return `export function ${instruction.name}(accounts: { ${accountFields} }${argParam}) {
   return {
@@ -588,7 +580,7 @@ export const idl = ${JSON.stringify(idl, null, 2)} as const;
 
 ${builders.join("\n\n")}
 
-export function decode(account: string, data: Uint8Array): Record<string, unknown> {
+export function decode(account: string, data: Uint8Array) {
   return decodeAccount(idl, account, data);
 }
 `;
