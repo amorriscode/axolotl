@@ -4,6 +4,7 @@ import { AccountsFigure, CpiFigure, PdaFigure } from "./figures.tsx";
 import { highlightRust } from "./highlight.ts";
 import { Playground } from "./playground.tsx";
 import { PROGRAM_ID, SAMPLE, sliceFunction } from "./sample.ts";
+import { DevnetPanel } from "./devnet.tsx";
 import { Specimen } from "./specimen.tsx";
 
 type Page = "home" | "learn" | "compiler" | "play" | "score";
@@ -259,6 +260,7 @@ function Scoreboard() {
           ))}
         </tbody>
       </table>
+      <DevnetPanel />
     </section>
   );
 }

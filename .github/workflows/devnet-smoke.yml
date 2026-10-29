@@ -1,0 +1,112 @@
+name: Devnet smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Deploy examples and smoke-test devnet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the deployer secret is missing
+        id: gate
+        env:
+          DEVNET_DEPLOYER_KEYPAIR: ${{ secrets.DEVNET_DEPLOYER_KEYPAIR }}
+        run: |
+          if [ -z "$DEVNET_DEPLOYER_KEYPAIR" ]; then
+            echo "DEVNET_DEPLOYER_KEYPAIR is not set. Skipping devnet deploy and smoke."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - if: steps.gate.outputs.skip != 'true'
+        name: Install Rust for Anchor proc macros
+        uses: dtolnay/rust-toolchain@stable
+
+      - if: steps.gate.outputs.skip != 'true'
+        name: Install Agave 4.1.2 and Anchor 1.2.2
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.1.2/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL -o "$HOME/.local/bin/anchor" \
+            https://github.com/otter-sec/anchor/releases/download/v1.2.2/anchor-1.2.2-x86_64-unknown-linux-gnu
+          chmod +x "$HOME/.local/bin/anchor"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - if: steps.gate.outputs.skip != 'true'
+        run: npm ci
+
+      - if: steps.gate.outputs.skip != 'true'
+        name: Build, deploy what the wallet can afford, and smoke test
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.anchor-target
+          DEVNET_DEPLOYER_KEYPAIR: ${{ secrets.DEVNET_DEPLOYER_KEYPAIR }}
+          DEVNET_PROGRAM_KEYS: ${{ secrets.DEVNET_PROGRAM_KEYS }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$HOME/.local/bin:$PATH"
+          umask 077
+          KEY="$RUNNER_TEMP/devnet-deployer.json"
+          printf '%s' "$DEVNET_DEPLOYER_KEYPAIR" > "$KEY"
+          solana config set --url https://api.devnet.solana.com --keypair "$KEY"
+          RECIPIENT="$(solana-keygen pubkey "$KEY")"
+          # The public RPC faucet currently returns 410. Retry in case it opens.
+          for wait in 0 15 30 60; do
+            if [ "$wait" != 0 ]; then sleep "$wait"; fi
+            solana airdrop 2 "$RECIPIENT" --url https://api.devnet.solana.com --keypair "$KEY" && break || true
+          done
+          solana balance --lamports --url https://api.devnet.solana.com
+          # keys/ is gitignored. Without DEVNET_PROGRAM_KEYS, axolotl build
+          # generates new program ids, so this job does not upgrade the
+          # addresses recorded in DEVNET.md.
+          if [ -n "${DEVNET_PROGRAM_KEYS:-}" ]; then
+            printf '%s' "$DEVNET_PROGRAM_KEYS" | base64 -d | tar -xz -C "$GITHUB_WORKSPACE"
+          fi
+          AXOLOTL="node $GITHUB_WORKSPACE/packages/cli/bin/axolotl.js"
+          deploy_status=0
+          for dir in examples/counter examples/token-vault examples/cpi/echo examples/cpi/relay examples/pda-profile; do
+            if ! (cd "$dir" && $AXOLOTL build); then
+              echo "Build failed for $dir"
+              deploy_status=1
+              break
+            fi
+            so=$(ls "$dir"/target/deploy/*.so | head -1)
+            bytes=$(wc -c < "$so")
+            need=$(( (bytes + 128) * 3480 * 2 * 2 + 20000000 ))
+            have=$(solana balance --lamports | awk '{print $1}')
+            echo "$dir is $bytes bytes, about $need lamports, wallet has $have"
+            if [ "$have" -lt "$need" ]; then
+              echo "Not enough devnet SOL to deploy $dir. Priority is counter, then the token vault, then CPI."
+              deploy_status=1
+              break
+            fi
+            if ! (cd "$dir" && $AXOLOTL deploy --cluster https://api.devnet.solana.com); then
+              echo "Deploy failed for $dir"
+              deploy_status=1
+              break
+            fi
+          done
+          node scripts/devnet-smoke.ts --cluster devnet --keypair "$KEY" --out site/public/devnet.json || deploy_status=1
+          exit "$deploy_status"
+
+      - if: always() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-smoke
+          path: site/public/devnet.json
+          if-no-files-found: ignore

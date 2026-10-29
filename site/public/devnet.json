@@ -1,0 +1,51 @@
+{
+  "cluster": "devnet",
+  "url": "https://api.devnet.solana.com",
+  "generated": "2026-10-29T16:14:14.891Z",
+  "status": "unfunded",
+  "live": false,
+  "headline": "Not live on devnet. The deployer has 0 lamports, so nothing was deployed or invoked.",
+  "deployer": "HdbnHfE21fDb2fFZqvsK9Z96moYPbUJWSCaWABRUjjLv",
+  "balanceLamports": "0",
+  "programs": [
+    {
+      "name": "counter",
+      "id": "8qUgK4vi5mPRKpGfTVto7FpWyBjNgfB6U6opToXWM585",
+      "deployed": false,
+      "idl": "examples/counter/target/idl/counter.json",
+      "explorer": "https://explorer.solana.com/address/8qUgK4vi5mPRKpGfTVto7FpWyBjNgfB6U6opToXWM585?cluster=devnet"
+    },
+    {
+      "name": "token_vault",
+      "id": "4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3",
+      "deployed": false,
+      "idl": "examples/token-vault/target/idl/token_vault.json",
+      "explorer": "https://explorer.solana.com/address/4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3?cluster=devnet"
+    },
+    {
+      "name": "pda_profile",
+      "id": "5kYGWFrmwpgL8xsCtPCwzdxWjZ3itbtmPqjk8sRNGiU3",
+      "deployed": false,
+      "idl": "examples/pda-profile/target/idl/pda_profile.json",
+      "explorer": "https://explorer.solana.com/address/5kYGWFrmwpgL8xsCtPCwzdxWjZ3itbtmPqjk8sRNGiU3?cluster=devnet"
+    },
+    {
+      "name": "echo",
+      "id": "5MWt5tcVEsYHTh2tPJxnM8gRtvUpWa4E72tn2PzhaoXU",
+      "deployed": false,
+      "idl": "examples/cpi/echo/target/idl/echo.json",
+      "explorer": "https://explorer.solana.com/address/5MWt5tcVEsYHTh2tPJxnM8gRtvUpWa4E72tn2PzhaoXU?cluster=devnet"
+    },
+    {
+      "name": "relay",
+      "id": "6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c",
+      "deployed": false,
+      "idl": "examples/cpi/relay/target/idl/relay.json",
+      "explorer": "https://explorer.solana.com/address/6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c?cluster=devnet"
+    }
+  ],
+  "transactions": [],
+  "notes": [
+    "Deployer HdbnHfE21fDb2fFZqvsK9Z96moYPbUJWSCaWABRUjjLv has 0 lamports on https://api.devnet.solana.com. Smoke needs at least 50000000 lamports after the programs are deployed, and deploy itself needs roughly two rent-exempt copies of each .so. No instructions were sent."
+  ]
+}

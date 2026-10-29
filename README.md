@@ -75,6 +75,19 @@ npm run conformance
 
 The IDL check compares Axolotl's discriminators, event discriminators, and error codes with the JSON from `anchor build`.
 
+## Devnet
+
+LiteSVM is the conformance runtime. A second check, against a Solana cluster, is `scripts/devnet-smoke.ts`. It loads each example IDL from `target/idl` and sends the counter, token-vault, PDA profile, and CPI flows with `@solana/kit`.
+
+```sh
+node scripts/devnet-smoke.ts --dry-run
+node scripts/devnet-smoke.ts --cluster devnet --keypair "$AXOLOTL_DEPLOYER_KEYPAIR" --out site/public/devnet.json
+```
+
+The fee payer is a JSON keypair you pass on the command line. Do not commit it. `axolotl deploy --cluster devnet` spends that wallet, then the smoke script reads the program ids already in `axolotl.toml`.
+
+What actually landed on devnet, including the failed attempt to fund a throwaway wallet, is written in [DEVNET.md](DEVNET.md). The same facts are in [site/public/devnet.json](site/public/devnet.json) for the scoreboard. [`.github/workflows/devnet-smoke.yml`](.github/workflows/devnet-smoke.yml) can redeploy and rerun the smoke test. It skips, successfully, when the `DEVNET_DEPLOYER_KEYPAIR` repository secret is unset. The public devnet faucet is closed, so that secret has to be a wallet that already holds devnet SOL.
+
 ## Staying current
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request: compiler tests, a full program build, the conformance suite, and the site build.

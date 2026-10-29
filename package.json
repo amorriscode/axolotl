@@ -17,6 +17,7 @@
     "test": "npm run test -w @axolotl-sol/compiler && npm run test -w @axolotl-sol/client",
     "build:programs": "node scripts/build-programs.ts",
     "conformance": "node scripts/conformance.ts",
+    "devnet:smoke": "node scripts/devnet-smoke.ts",
     "site:build": "npm run build -w site",
     "check-updates": "node scripts/check-updates.ts"
   },
