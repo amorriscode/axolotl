@@ -54,7 +54,7 @@ Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `Token2022Progra
 
 `UncheckedAccount` does not check the owner. Do not use it for an authority. `hasOne` and `close` reject it.
 
-`optional: true` makes an account `Option`. Pass the program id when it is absent. A field read, including `.key`, must sit inside `if (present(account)) { ... }`. A `constraint`, `hasOne`, `close`, `realloc`, `owner`, or token constraint cannot be placed on an optional account: Anchor checks those before the body, so they cannot sit inside `present()`. `realloc: N` grows the account; the payer is the same `payer` option. `Vec<T, N>` stores at most N elements, and `push` fails with `VecFull` past that. `Str<N>` stores at most N bytes, and assignment fails with `StringTooLong`. Unit enums are one byte.
+`optional: true` makes an account `Option`. Pass the program id when it is absent. A field read, including `.key`, must sit inside `if (present(account)) { ... }`. A `constraint`, `hasOne`, `close`, `realloc`, `owner`, `seeds`, `bump`, `address`, or token constraint cannot be placed on an optional account: Anchor checks those before the body, so they cannot sit inside `present()`. `realloc: N` grows the account; the payer is the same `payer` option. `Vec<T, N>` stores at most N elements, and `push` fails with `VecFull` past that. `Str<N>` stores at most N bytes, and assignment fails with `StringTooLong`. Unit enums are one byte.
 
 `TokenAccount` and `Mint` may be wrapped in `Account<TokenAccount, { mut: true }>`. `TokenProgram` is the SPL token interface and is not pinned to the classic token program, in the IDL or in the program. `Token2022Program` is pinned to Token-2022 in both. `Program` means the account is executable. The owner is the loader. Use `UncheckedAccount` when the caller does not know the owner.
 
@@ -102,7 +102,14 @@ for (let i: u64 = 0n; i < times; i = i + 1n) {
 }
 ```
 
-`if` bodies are blocks. `while` conditions are expressions. `break` and `continue` apply to the innermost loop. The `for` form is still only `for (let i: T = start; i < bound; i = i + 1n)`. `return;` exits an instruction that returns nothing. `return expr;` is allowed when the function's return type is a scalar.
+`if` bodies are blocks. A `cpiReturn` in an `if` condition runs once, before the branch. A `while` condition and a `for` bound run on every iteration, so a `cpiReturn` there is an error. Bind the call first:
+
+```ts
+const value: u64 = cpiReturn<u64>({ program, name: "double", accounts: [], args: [value] });
+while (value > 0n) { ... }
+```
+
+`break` and `continue` apply to the innermost loop. The `for` form is still only `for (let i: T = start; i < bound; i = i + 1n)`. A `for` initializer runs once, so a `cpiReturn` there is allowed. `return;` exits an instruction that returns nothing. `return expr;` is allowed when the function's return type is a scalar.
 
 A non-exported function with scalar parameters and an optional scalar return type is a helper. Helpers are emitted outside `#[program]` so Anchor does not turn them into instructions.
 
@@ -138,11 +145,14 @@ token.transferChecked({
 });
 
 cpi({
-  program: echoProgram,
-  name: "setValue",
-  accounts: [{ account: data, mut: true }],
-  args: [value],
-});
+    program: echoProgram,
+    name: "setValue",
+    accounts: [
+      { account: data, mut: true },
+      { account: authority, signer: true },
+    ],
+    args: [value],
+  });
 ```
 
 `name` is the callee's TypeScript function name. Axolotl snake-cases it the same way it names the generated Rust function, then uses Anchor's `sha256("global:" + name)[..8]` discriminator.

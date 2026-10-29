@@ -275,16 +275,13 @@ export function add(bag: Account<Bag, { mut: true }>, value: u64): void { push(b
   assert.equal(missing.rust, "");
 });
 
-test("cpiReturn in an if or while condition invokes before the value is read", () => {
+test("cpiReturn in an if condition invokes before the value is read", () => {
   const source = `
 import { cpiReturn, type Program } from "@axolotl-sol/core";
 export interface Counter { count: u64; }
 export function take(counter: Account<Counter, { mut: true }>, echo: Program, value: u64): void {
   if (cpiReturn<u64>({ program: echo, name: "double", accounts: [], args: [value] }) > 0n) {
     counter.count = 1n;
-  }
-  while (cpiReturn<u64>({ program: echo, name: "double", accounts: [], args: [value] }) > 0n) {
-    break;
   }
 }`;
   const result = compileOne(source);
@@ -294,10 +291,6 @@ export function take(counter: Account<Counter, { mut: true }>, echo: Program, va
   const bindAt = result.rust.indexOf("get_return_data()");
   const readAt = result.rust.indexOf("read_u64");
   assert.ok(invokeAt >= 0 && ifAt > invokeAt && bindAt < ifAt && ifAt < readAt, result.rust);
-  const whileAt = result.rust.search(/while \(ax_codec::read_/);
-  const secondInvoke = result.rust.indexOf("invoke(", invokeAt + 1);
-  const secondBind = result.rust.indexOf("get_return_data()", bindAt + 1);
-  assert.ok(secondInvoke >= 0 && secondBind > secondInvoke && whileAt > secondBind, result.rust);
 });
 
 test("optional accounts cannot be read through .key or a constraint", () => {
@@ -385,8 +378,20 @@ export function add(amount: u64, flag: u8): void {}`);
   assert.doesNotMatch(result.client, /unknown/);
 });
 
-test("cpiReturn in a for bound is invoked before the loop variable is read", () => {
-  const loop = compileOne(`
+test("cpiReturn in a while condition or a for bound is not hoisted", () => {
+  const message = /cpiReturn in a while condition would run once[\s\S]*Bind the call first:/;
+  const spun = compileOne(`
+import { cpiReturn, type Program } from "@axolotl-sol/core";
+export interface Counter { count: u64; }
+export function spin(counter: Account<Counter, { mut: true }>, echo: Program, value: u64): void {
+  while (cpiReturn<u64>({ program: echo, name: "double", accounts: [], args: [value] }) > 0n) {
+    counter.count = counter.count + 1n;
+  }
+}`);
+  assert.equal(spun.ok, false);
+  assert.match(spun.diagnostics.map((item) => item.message).join("\n"), message);
+  assert.equal(spun.rust, "");
+  const bounded = compileOne(`
 import { cpiReturn, type Program } from "@axolotl-sol/core";
 export interface Counter { count: u64; }
 export function spin(counter: Account<Counter, { mut: true }>, echo: Program, value: u64): void {
@@ -394,12 +399,21 @@ export function spin(counter: Account<Counter, { mut: true }>, echo: Program, va
     counter.count = counter.count + 1n;
   }
 }`);
-  assert.equal(loop.ok, true, loop.diagnostics.map((item) => item.message).join("\n"));
-  const invokeAt = loop.rust.indexOf("invoke(");
-  const bindAt = loop.rust.indexOf("get_return_data()");
-  const letAt = loop.rust.indexOf("let mut i");
-  const readAt = loop.rust.indexOf("read_u64");
-  assert.ok(invokeAt >= 0 && bindAt > invokeAt && letAt > bindAt && readAt > letAt, loop.rust);
+  assert.equal(bounded.ok, false);
+  assert.match(bounded.diagnostics.map((item) => item.message).join("\n"), /for bound would run once[\s\S]*Bind the call first:/);
+  assert.equal(bounded.rust, "");
+  const initOnce = compileOne(`
+import { cpiReturn, type Program } from "@axolotl-sol/core";
+export interface Counter { count: u64; }
+export function spin(counter: Account<Counter, { mut: true }>, echo: Program, value: u64, times: u64): void {
+  for (let i: u64 = cpiReturn<u64>({ program: echo, name: "double", accounts: [], args: [value] }); i < times; i = i + 1n) {
+    counter.count = counter.count + 1n;
+  }
+}`);
+  assert.equal(initOnce.ok, true, initOnce.diagnostics.map((item) => item.message).join("\n"));
+  const invokeAt = initOnce.rust.indexOf("invoke(");
+  const letAt = initOnce.rust.indexOf("let mut i");
+  assert.ok(invokeAt >= 0 && letAt > invokeAt, initOnce.rust);
 });
 
 test("optional accounts reject constraints that run before the body", () => {
@@ -422,6 +436,74 @@ export function touch(counter: Account<Counter, { optional: true }>, user: Signe
   assert.equal(inside.ok, true, inside.diagnostics.map((item) => item.message).join("\n"));
   assert.match(inside.rust, /as_ref\(\)\.ok_or\(AxolotlError::MissingAccount\)\?\.key\(\)/);
   assert.doesNotMatch(inside.rust, /ctx\.accounts\.counter\.key\(\)/);
+});
+
+test("seeds, bump, and address cannot sit on an optional account", () => {
+  const seeds = compileOne(`
+export interface Counter { count: u64; bump: u8; }
+export function touch(counter: Account<Counter, { optional: true; seeds: ["counter"]; bump: true }>, user: Signer): void {}`);
+  assert.equal(seeds.ok, false);
+  assert.match(seeds.diagnostics.map((item) => item.message).join("\n"), /optional/);
+  assert.equal(seeds.rust, "");
+  const bump = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true; bump: true }>): void {}`);
+  assert.equal(bump.ok, false);
+  assert.match(bump.diagnostics.map((item) => item.message).join("\n"), /bump/);
+  assert.equal(bump.rust, "");
+  const address = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true; address: "11111111111111111111111111111111" }>): void {}`);
+  assert.equal(address.ok, false);
+  assert.match(address.diagnostics.map((item) => item.message).join("\n"), /address/);
+  assert.equal(address.rust, "");
+});
+
+test("present() on the left of && guards the right, and not the else", () => {
+  const guarded = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true; mut: true }>): void {
+  if (present(counter) && counter.count > 0n) {
+    counter.count = 1n;
+  }
+}`);
+  assert.equal(guarded.ok, true, guarded.diagnostics.map((item) => item.message).join("\n"));
+  assert.match(guarded.rust, /is_some\(\)/);
+  assert.match(guarded.rust, /count > 0/);
+  const or = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true }>): void {
+  if (present(counter) || counter.count > 0n) { log(counter.count); }
+}`);
+  assert.equal(or.ok, false);
+  assert.match(or.diagnostics.map((item) => item.message).join("\n"), /optional/);
+  const otherwise = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true; mut: true }>): void {
+  if (present(counter) && counter.count > 0n) {
+    counter.count = 1n;
+  } else {
+    counter.count = 0n;
+  }
+}`);
+  assert.equal(otherwise.ok, false);
+  assert.match(otherwise.diagnostics.map((item) => item.message).join("\n"), /optional/);
+  assert.equal(otherwise.rust, "");
+});
+
+test("the language doc's CPI sample forwards the authority", () => {
+  const doc = readFileSync(new URL("../../../docs/language.md", import.meta.url), "utf8");
+  const relay = readFileSync(new URL("../../../examples/cpi/relay/src/relay.ts", import.meta.url), "utf8");
+  const sample = relay.slice(relay.indexOf("cpi({"));
+  assert.match(doc, /accounts: \[[\s\S]*account: authority, signer: true/);
+  assert.ok(doc.includes(sample.slice(0, sample.indexOf("});") + 3)));
+});
+
+test("the IR header names the Rust lowering still prints", () => {
+  const text = readFileSync(new URL("../src/ir.ts", import.meta.url), "utf8");
+  assert.match(text, /invoke/);
+  assert.match(text, /system transfer/);
+  assert.match(text, /PDA seeds/);
 });
 
 test("pinned addresses are one decision for the IDL and the Rust", () => {

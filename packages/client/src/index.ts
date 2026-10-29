@@ -1,8 +1,8 @@
 /**
  * Borsh helpers for the Anchor IDL subset Axolotl generates.
  * Public keys are base58 strings. `u64` / `i64` / `u128` / `i128` are bigints.
- * `bytes32` is a 32-byte `Uint8Array` on the way in and a trailing-zero-trimmed
- * UTF-8 string on the way out.
+ * `bytes32` is a 32-byte `Uint8Array` on the way in and a UTF-8 string on the
+ * way out, zeros included.
  */
 
 export interface IdlField {
@@ -250,9 +250,7 @@ function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
   if (typeof type === "object" && "array" in type) {
     const bytes = reader.bytes(type.array[1]);
     if (type.array[0] !== "u8") throw new Error(`unsupported array element ${type.array[0]}`);
-    let text = "";
-    for (const byte of bytes) text += String.fromCharCode(byte);
-    return text;
+    return new TextDecoder().decode(bytes);
   }
   if (typeof type !== "string") throw new Error(`unsupported IDL type ${JSON.stringify(type)}`);
   if (type === "bool") return reader.u8() !== 0;

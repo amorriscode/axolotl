@@ -71,6 +71,11 @@ test("a short account and a zero inside bytes32 do not decode quietly", () => {
   assert.equal(typeof decoded.nick, "string");
   assert.equal((decoded.nick as string).length, 32);
   assert.equal((decoded.nick as string).charCodeAt(2), 0);
+  data[8] = 0xc3;
+  data[9] = 0xa9;
+  const utf8 = decodeAccount(idl, "Profile", data);
+  assert.equal((utf8.nick as string).startsWith("é"), true);
+  assert.equal((utf8.nick as string).charCodeAt(1), 0);
   assert.throws(() => decodeAccount(idl, "Profile", data.subarray(0, 8 + 4)), /need 32 bytes at 8, have 12/);
   const shortCount = data.slice();
   shortCount.set(data.subarray(0, 8 + 32));

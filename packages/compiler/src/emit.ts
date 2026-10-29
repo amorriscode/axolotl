@@ -20,6 +20,7 @@ import type {
   StructModel,
 } from "./model.ts";
 import { renderStmt } from "./print.ts";
+import { seedBytes } from "./seeds.ts";
 import { accountSpace, idlArgType, idlFieldType, idlType, rustArgType, rustFieldType, rustType, snake } from "./util.ts";
 
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
@@ -247,7 +248,7 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
     parts.push("mut", `realloc = ${opts.realloc}`, `realloc::payer = ${snake(opts.payer ?? "")}`, "realloc::zero = true");
   } else if (opts.mut && !opts.init && !opts.initIfNeeded && !opts.zero) parts.push("mut");
   if (opts.seeds.length > 0) {
-    const seeds = opts.seeds.map((seed) => seedRust(seed, program, instructionArgs(account, program))).join(", ");
+    const seeds = opts.seeds.map((seed) => seedRust(seed, instructionArgs(account, program))).join(", ");
     parts.push(`seeds = [${seeds}]`);
   }
   if (opts.bump) {
@@ -284,20 +285,15 @@ function instructionArgs(account: AccountParam, program: ProgramModel): ArgParam
   return instruction?.params.filter((param): param is ArgParam => param.kind === "arg") ?? [];
 }
 
-function seedRust(seed: SeedModel, program: ProgramModel, args: ArgParam[]): string {
-  if (seed.kind === "const") {
-    const bytes = [...new TextEncoder().encode(seed.value)];
-    const printable = [...seed.value].every((ch) => ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) < 127 && ch !== "\\" && ch !== "\"");
-    return printable ? `b${JSON.stringify(seed.value)}` : `&[${bytes.map((byte) => `${byte}u8`).join(", ")}]`;
-  }
-  if (seed.kind === "account") return `${snake(seed.name)}.key().as_ref()`;
-  const arg = args.find((item) => item.name === seed.name);
-  const name = arg?.rustName ?? snake(seed.name);
-  const ty = arg?.ty ?? "u64";
-  if (ty === "pubkey" || ty === "bytes32") return `${name}.as_ref()`;
-  if (ty === "string") return `${name}.as_bytes()`;
-  if (ty === "u8" || ty === "i8" || ty === "bool") return `&[${name} as u8]`;
-  return `${name}.to_le_bytes().as_ref()`;
+function seedRust(seed: SeedModel, args: ArgParam[]): string {
+  return seedBytes(seed, {
+    accountKey: (name) => `${snake(name)}.key()`,
+    arg: (name) => {
+      const found = args.find((item) => item.name === name);
+      const ty = found && typeof found.ty === "string" ? found.ty : "u64";
+      return { name: found?.rustName ?? snake(name), ty };
+    },
+  }).inline;
 }
 
 function accountRustType(account: AccountParam, program: ProgramModel): string {

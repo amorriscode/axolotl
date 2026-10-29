@@ -25,7 +25,8 @@ import type {
 } from "./model.ts";
 import type { ParsedHelper, ParsedInstruction, ParsedProgram } from "./parse.ts";
 import { discriminator, isPubkey } from "./codec.ts";
-import { fits, isInteger, isRustKeyword, rustByteStr, rustLiteral, rustString, snake, variantName } from "./util.ts";
+import { seedBytes } from "./seeds.ts";
+import { fits, isInteger, isRustKeyword, rustLiteral, rustString, snake, variantName } from "./util.ts";
 
 interface Local {
   rustName: string;
@@ -269,6 +270,9 @@ function validateAccounts(instruction: ParsedInstruction, structs: StructModel[]
       if (opts.owner) early.push("owner");
       if (opts.tokenMint || opts.tokenAuthority) early.push("tokenMint/tokenAuthority");
       if (opts.associatedMint || opts.associatedAuthority) early.push("associatedMint/associatedAuthority");
+      if (opts.seeds.length > 0) early.push("seeds");
+      if (opts.bump) early.push("bump");
+      if (opts.address) early.push("address");
       for (const attr of early) {
         diag.error(
           instruction.file,
@@ -400,14 +404,33 @@ function lowerWhile(node: ts.WhileStatement, ctx: LowerContext, loc: Loc): Stmt[
   if (!cond) return [];
   const concrete = adapt(cond, "bool", ctx, node.expression);
   if (!concrete) return [];
-  const prelude = takePending(ctx);
+  if (ctx.pending.length > 0) {
+    ctx.pending = [];
+    ctx.diag.errorAt(ctx.sf, node.expression, repeatedCpi("while"));
+    return [];
+  }
   const body = lowerBlock(node.statement, ctx, false).stmts;
   const ir: import("./ir.ts").IrStmt = {
     t: "while",
     cond: irOf(concrete),
     body: body.map((item) => item.ir ?? { t: "text", text: item.code }),
   };
-  return [...prelude, statement(ir, loc)];
+  return [statement(ir, loc)];
+}
+
+function repeatedCpi(place: "while" | "for"): string {
+  if (place === "while") {
+    return [
+      "cpiReturn in a while condition would run once. TypeScript runs that condition on every iteration. Bind the call first:",
+      "const value: u64 = cpiReturn<u64>({ program, name: \"double\", accounts: [], args: [value] });",
+      "while (value > 0n) { ... }",
+    ].join("\n");
+  }
+  return [
+    "cpiReturn in a for bound would run once. TypeScript runs that bound on every iteration. Bind the call first:",
+    "const limit: u64 = cpiReturn<u64>({ program, name: \"double\", accounts: [], args: [value] });",
+    "for (let i: u64 = 0n; i < limit; i = i + 1n) { ... }",
+  ].join("\n");
 }
 
 function takePending(ctx: LowerContext): Stmt[] {
@@ -664,11 +687,17 @@ function lowerFor(node: ts.ForStatement, ctx: LowerContext, loc: Loc): Stmt[] {
     ctx.diag.errorAt(ctx.sf, decl, "Loop variables must be integers.");
     return [];
   }
+  const initPrelude = takePending(ctx);
   if (!ts.isBinaryExpression(node.condition) || node.condition.operatorToken.kind !== ts.SyntaxKind.LessThanToken || !ts.isIdentifier(node.condition.left) || node.condition.left.text !== name) {
     ctx.diag.errorAt(ctx.sf, node.condition, "Loop condition must be `i < bound`.");
     return [];
   }
   const bound = lowerExpr(node.condition.right, ctx, initConcrete.ty);
+  if (ctx.pending.length > 0) {
+    ctx.pending = [];
+    ctx.diag.errorAt(ctx.sf, node.condition.right, repeatedCpi("for"));
+    return [];
+  }
   if (!bound) return [];
   const boundConcrete = adapt(bound, initConcrete.ty, ctx, node.condition.right);
   if (!boundConcrete) return [];
@@ -686,11 +715,10 @@ function lowerFor(node: ts.ForStatement, ctx: LowerContext, loc: Loc): Stmt[] {
     return [];
   }
   ctx.scope.locals.set(name, { rustName, ty: initConcrete.ty, mutable: true });
-  const prelude = takePending(ctx);
   const body = lowerBlock(node.statement, ctx, false).stmts;
   ctx.scope.locals.delete(name);
   ctx.usesArithmetic = true;
-  return [...prelude, statement({
+  return [...initPrelude, statement({
     t: "for",
     name: rustName,
     ty: rustTy(initConcrete.ty),
@@ -1147,9 +1175,7 @@ function pdaSeeds(account: AccountParam, ctx: LowerContext): { name: string; pre
   if (account.opts.seeds.length === 0) return null;
   const prelude: Stmt[] = [];
   const parts: string[] = [];
-  account.opts.seeds.forEach((seed, index) => {
-    parts.push(seedExpr(seed, index, account, ctx, prelude));
-  });
+  for (const seed of account.opts.seeds) parts.push(seedExpr(seed, ctx, prelude));
   const bump = fresh(ctx);
   prelude.push({ code: `let ${bump} = ${bumpSource(account, ctx)};` });
   parts.push(`&[${bump}][..]`);
@@ -1158,37 +1184,23 @@ function pdaSeeds(account: AccountParam, ctx: LowerContext): { name: string; pre
   return { name, prelude };
 }
 
-function seedExpr(seed: SeedModel, index: number, account: AccountParam, ctx: LowerContext, prelude: Stmt[]): string {
-  if (seed.kind === "const") {
-    const rendered = rustByteStr(seed.value);
-    if (rendered.startsWith("b")) return rendered;
-    const name = fresh(ctx);
-    prelude.push({ code: `let ${name}: &[u8] = ${rendered};` });
-    return name;
-  }
-  if (seed.kind === "account") {
-    const acc = ctx.scope.accounts.get(seed.name);
-    const rustName = acc?.rustName ?? snake(seed.name);
-    const local = fresh(ctx);
-    prelude.push({ code: `let ${local} = ctx.accounts.${rustName}.key();` });
-    return `${local}.as_ref()`;
-  }
-  const arg = ctx.scope.args.get(seed.name);
-  const rustName = arg?.rustName ?? snake(seed.name);
-  const ty = arg?.ty ?? "u64";
+function seedExpr(seed: SeedModel, ctx: LowerContext, prelude: Stmt[]): string {
+  const form = seedBytes(seed, {
+    accountKey: (name) => {
+      const acc = ctx.scope.accounts.get(name);
+      return `ctx.accounts.${acc?.rustName ?? snake(name)}.key()`;
+    },
+    arg: (name) => {
+      const found = ctx.scope.args.get(name);
+      const ty = found && typeof found.ty === "string" ? found.ty : "u64";
+      return { name: found?.rustName ?? snake(name), ty };
+    },
+  });
+  if (!form.bind) return form.inline;
   const local = fresh(ctx);
-  if (ty === "pubkey") {
-    prelude.push({ code: `let ${local} = ${rustName};` });
-    return `${local}.as_ref()`;
-  }
-  if (ty === "string") return `${rustName}.as_bytes()`;
-  if (ty === "bytes32") return `&${rustName}[..]`;
-  if (ty === "u8" || ty === "i8" || ty === "bool") {
-    prelude.push({ code: `let ${local} = [${rustName} as u8];` });
-    return `&${local}[..]`;
-  }
-  prelude.push({ code: `let ${local} = ${rustName}.to_le_bytes();` });
-  return `${local}.as_ref()`;
+  const ty = form.bindTy ? `: ${form.bindTy}` : "";
+  prelude.push({ code: `let ${local}${ty} = ${form.bind};` });
+  return form.read(local);
 }
 
 function objectArg(node: ts.CallExpression, ctx: LowerContext): ts.ObjectLiteralExpression | null {
@@ -1474,7 +1486,12 @@ function lowerBinary(node: ts.BinaryExpression, ctx: LowerContext, expected?: Sc
   }
   if (op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.BarBarToken) {
     const left = expectBool(node.left, ctx);
+    const saved = new Set(ctx.guarded);
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+      for (const name of guardedBy(node.left)) ctx.guarded.add(name);
+    }
     const right = expectBool(node.right, ctx);
+    ctx.guarded = saved;
     if (!left || !right) return null;
     const token = op === ts.SyntaxKind.AmpersandAmpersandToken ? "&&" : "||";
     return fromIr({ t: "logic", op: token, left: irOf(left), right: irOf(right) }, "bool");
