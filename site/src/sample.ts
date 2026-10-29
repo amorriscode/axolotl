@@ -38,7 +38,9 @@ export function sliceFunction(rust: string, name: string): string {
   const start = rust.indexOf(marker);
   if (start < 0) return rust.trim();
   const lineStart = rust.lastIndexOf("\n", start) + 1;
-  const next = rust.indexOf("\n    pub fn ", start + marker.length);
-  const end = next < 0 ? rust.length : next;
+  const implClose = rust.indexOf("\n}\n", start);
+  const nextAttr = rust.indexOf("\n#[", start);
+  const candidates = [implClose, nextAttr].filter((index) => index > start);
+  const end = candidates.length ? Math.min(...candidates) : rust.length;
   return rust.slice(lineStart, end).trim();
 }

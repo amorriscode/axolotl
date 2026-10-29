@@ -38,11 +38,12 @@ export function DevnetPanel() {
       .catch(() => setData(null));
   }, []);
   if (!data) return null;
+  const when = data.generated.slice(0, 10);
   return (
     <section className="devnet-proof">
-      <p className="kicker">Cluster · {data.generated}</p>
+      <p className="eyebrow"><span>Devnet</span> {when}</p>
       <h2>{data.headline}</h2>
-      <p className="deck">
+      <p className="lede">
         <span className={`mark ${data.live ? "pass" : "fail"}`}>{data.live ? "live" : data.status}</span>
         {data.deployer ? ` Deployer ${data.deployer}.` : ""}
         {data.balanceLamports != null ? ` Balance ${data.balanceLamports} lamports.` : ""}

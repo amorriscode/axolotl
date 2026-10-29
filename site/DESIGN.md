@@ -1,57 +1,53 @@
 # Site design
 
-Written after looking at the live sites on 29 October 2026, and after the previous Axolotl site (Fraunces, a pink gradient, pill buttons, three feature cards, a blob favicon). That combination is the default look of generated marketing pages. This pass refuses it.
+Concept: **night water**. An axolotl never metamorphoses. It stays in the water, gills out, and still regenerates a whole limb. The compiler does the same thing. You stay in TypeScript. The program that grows back is an ordinary Anchor binary.
+
+The animal is the only saturated object on the page. Everything else is ivory type on a plum-black field, with one laboratory yellow-green used only when something has compiled or passed.
 
 ## What was taken, and from where
 
-**[solana.com](https://solana.com).** The page opens with one sentence, then large figures (transactions, throughput) and a dated editorial list. It does not put a row of feature cards under the hero. Taken: the home page is a claim, a drawing, and the conformance fraction. The scoreboard is dated and grouped, like their changelog, not a dashboard of badges.
+Looked at the live sites on 29 October 2026, after two rejected Axolotl designs (a pink gradient with a card grid, then a green-black specimen plate). The notes below are the specific moves that survived that comparison.
 
-**Solana Breakpoint, as listed from solana.com.** The event reads as a timetable. Taken: conformance rows are a timetable of features. Status is a word next to a tick, not a colored pill.
+**[lusion.co](https://lusion.co) and [activetheory.net](https://activetheory.net).** The WebGL object is the page, and the type is set against it at poster scale. The scene leaves when you scroll. Taken: a lazy-loaded Three.js axolotl, fixed on the first screen, fading as the next section covers it. Not taken: a full-viewport shader as decoration with nothing to look at.
 
-**[linear.app](https://linear.app).** Sections are labeled as figures. The product, including a real code diff, is the illustration. Taken: learn and compiler sections are numbered figures. The playground is a working editor, not a picture of one.
+**[bruno-simon.com](https://bruno-simon.com).** The 3D thing is the subject, not a background. Taken: the creature has anatomy (wide head, external gills, eye, limbs, caudal fin) and it follows the pointer. A flat poster stands in until the first frame, and for browsers without WebGL.
 
-**[stripe.com/newsroom](https://stripe.com/newsroom).** Serif for the essay, a plain grotesque for the interface, dates, a wide measure, almost no color. Stripe Press describes itself as writing for practitioners. Taken: Newsreader for prose, Atkinson Hyperlegible for UI, paper-colored plates for anything you study. The learn page is an essay with figures.
+**[stripe.com](https://stripe.com) sessions posters.** A high-contrast italic display face, set huge, with a grotesque doing the work underneath. Taken: Bodoni Moda for the claim and the conformance fraction. Bricolage Grotesque for the interface. The two never swap jobs.
 
-**[rauno.me](https://rauno.me).** A name, one sentence, and a list of principles ("Make it fast. Make it beautiful."). No hero illustration and no cards. Taken: the masthead is a word and four links. The only motion is the gill that has a reason to move.
+**[linear.app](https://linear.app).** The product chrome is the illustration. Taken: the playground is an edge-to-edge instrument. TypeScript, Rust, and the IDL are three panes, not tabs. A lamp is the compile state. No feature grid beside it.
 
-**[ciechanow.ski/bicycle](https://ciechanow.ski/bicycle/).** The diagram is the argument. One mechanism per section, drawn in ink on a light ground, text beside it. Taken: accounts, program-derived addresses, and cross-program invocation are stepped figures on paper. The caption changes with the step.
+**[rauno.me](https://rauno.me).** Motion is rare and has a job. Taken: the gill mark sways, the account liquid moves when the step changes, the CPI bead travels, the page fades. Nothing else animates. `prefers-reduced-motion` freezes the swim and the fades.
 
-**[joshwcomeau.com](https://www.joshwcomeau.com/).** Widgets sit inside the explanation. Motion teaches (squash and stretch, not a loading shimmer). Taken: each figure has a control, and the caption is an `aria-live` region so the step is available without the picture.
+**[solana.com](https://solana.com) and Breakpoint.** A claim, then a number, then a dated list. Taken: home is the animal, one instruction lowered in the page, and `40/47` as type. The scoreboard is a timetable of rows. Status is the word pass, fail, or unsupported, plus a mark.
 
-**[www.anchor-lang.com/docs](https://www.anchor-lang.com/docs).** The useful part is the offer to start in the browser, and that the document is the code. Taken: the compiler page shows the real lowered Rust, produced by the same compiler the playground uses, so the prose cannot drift from the toolchain.
+**[jup.ag](https://jup.ag).** The number is in front of the tool. Taken: the fraction is the scoreboard's headline, not a badge on a card.
 
-**[jup.ag](https://jup.ag).** One claim, then the tool, with the number in front. Taken: `40/47` is set as a fraction with one tick per row, not a percentage badge on a card.
+**[vercel.com](https://vercel.com) / Next.js conf.** Code is on the first scroll, in the real typeface of the product. Taken: the increment instruction is compiled in the browser, TypeScript beside the Rust this page emitted.
 
-**[vercel.com](https://vercel.com).** The code is on the first screen. Taken: home shows a TypeScript instruction and the Rust function it lowers to, compiled in the page.
-
-**[bruno-simon.com](https://bruno-simon.com).** A WebGL world is the interface. Declined as a page background: a full-viewport shader is slow, and it is the current stand-in for "distinctive." Regeneration is a stroke redraw on the engraving. It stays sharp on a phone and stops when `prefers-reduced-motion` is set.
-
-**[www.helius.dev](https://www.helius.dev), [phantom.com](https://phantom.com), [godly.website](https://godly.website).** Recorded mostly as what to refuse. Helius leads with a logo marquee, persona cards, and stat blocks. Phantom's current page is a feature list. godly.website (now Recent) is still largely giant type over gradients. The axolotl is drawn once, as a lateral specimen, and is not repeated as a mascot.
+**[phantom.com](https://phantom.com), [backpack.app](https://backpack.app), [helius.dev](https://www.helius.dev), [godly.website](https://godly.website), Awwwards sites of the day.** Used mostly as a refusal list. Logo marquees, persona cards, three-up feature grids, pill buttons, and mesh gradients read as a template even when the type is large. The axolotl is drawn once, as a living animal. It is not a mascot repeated on every card.
 
 ## Identity
 
-A bench and a plate. The page is a green-black bench (`#121411`). Anything you read closely — the animal, the diagrams, the editor, the scoreboard — sits on warm paper (`#f3efe6`) with ink (`#1b1914`). One red (`#9d1c2c`) is the gill and the error. One green (`#1e5c40`) is a written byte or a passing row. No mesh gradient, no glass, no rounded pills, no three-up card grid.
+Night water. Background `#07060b`. Type `#f4efe8`. Secondary text `#c8c0d4`. The gill is `#ff5d7a` and it belongs to the animal and the mark, not to headlines. The signal `#dff56a` means the row passed or the program compiled.
 
 Type:
 
-- Newsreader for the essay and the wordmark. It is a text serif, not a display font used as a logo treatment.
-- Atkinson Hyperlegible for UI and body. The learn page has to be readable, including the captions under the figures.
-- IBM Plex Mono for code, addresses, and the kicker labels.
+- Bodoni Moda italic and roman, display only. The claim, the learn and compiler titles, the fraction.
+- Bricolage Grotesque for UI, prose, and section headings.
+- IBM Plex Mono for code, kickers, and addresses.
 
-The favicon is the same line drawing, reduced, not a filled blob.
+The favicon is three gill filaments, not a blob.
 
 ## Pages
 
-- **Home.** Claim, specimen, conformance fraction, then one instruction beside the Rust it becomes.
-- **Learn.** Three stepped figures: accounts, PDAs, CPI. Prose around them. Tokens are one paragraph, because a token account is still an account.
-- **Compiler.** Parse, model, emit, build, with the emitted function from the in-browser compiler.
-- **Playground.** CodeMirror 6 on the TypeScript. Rust and IDL beside it, not behind tabs. Diagnostics stay on the page. The hash is `#play/` plus a gzip payload, so the URL is the program.
-- **Scoreboard.** The fraction, a tick per row, then the table. On a narrow screen the table becomes a list of the same rows, still a table in the accessibility tree's terms only by reflow, with the column name repeated on each cell.
+- **Home.** The animal, then the claim. Scroll: one instruction beside the Rust it became, then the conformance fraction and a tick for every row.
+- **Learn.** Three figures: accounts as vessels on a transaction rail, a PDA bump moving on and then off a curve, CPI as two programs and a bead that can only carry what relay was given. Captions are `aria-live`.
+- **Compiler.** Parse, model, emit, build. Emit shows the function this page compiled.
+- **Playground.** CodeMirror on the TypeScript. Rust and IDL beside it. Diagnostics stay on the pane. The hash is `#play/` plus a gzip payload, so the URL is the program. "Load counter" restores the sample.
+- **Scoreboard.** The fraction, a tick per row, filters, then the table. On a narrow screen each row restacks and repeats its column name.
 
 ## Motion, speed, access
 
-The gill stroke redraws. Account flags, bytes, the bump, and the CPI handoff change when you press Next. Nothing else moves. `prefers-reduced-motion: reduce` removes the stroke animation and the short transitions.
+Three.js is a separate chunk, loaded only for the home scene. The renderer pauses off screen, when the tab is hidden, and when `prefers-reduced-motion` is set (one frame, no swim). Pixel ratio is capped. The canvas is `aria-hidden`; a text alternative sits in the hero.
 
-No Three.js. The drawing is SVG. CodeMirror was already the editor; Monaco would add a much larger runtime for the same job.
-
-Skip link, real links in the masthead, visible focus, `aria-current`, `aria-live` captions, and text alternatives on the specimen. The tick ruler is `aria-hidden` because the table carries the same information. Color is not the only signal: status is also the word "pass", "fail", or "unsupported".
+Skip link, real links, visible focus, `aria-current`, and status text that does not depend on color. The tick ruler is `aria-hidden` because the table has the same information.

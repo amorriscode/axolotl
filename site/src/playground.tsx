@@ -1,23 +1,37 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { compile, formatDiagnostics, type CompileResult } from "@axolotl-sol/compiler";
+import { tags } from "@lezer/highlight";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { highlightRust } from "./highlight.ts";
-import { PROGRAM_ID, SAMPLE } from "./sample.ts";
-import { decodeSource, encodeSource, tokenFromHash } from "./share.ts";
+import { highlightRust } from "./highlight";
+import { PROGRAM_ID, SAMPLE } from "./sample";
+import { decodeSource, encodeSource, tokenFromHash } from "./share";
+
+const axoHighlight = HighlightStyle.define([
+  { tag: [tags.keyword, tags.modifier, tags.controlKeyword, tags.operatorKeyword], color: "#f0a3b4" },
+  { tag: [tags.string, tags.special(tags.string)], color: "#e7d3a1" },
+  { tag: [tags.number], color: "#9adfd4" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: "#8e879c", fontStyle: "italic" },
+  { tag: [tags.typeName, tags.className], color: "#d8c6f4" },
+  { tag: [tags.bool, tags.null, tags.atom], color: "#dff56a" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#f7f1ea" },
+  { tag: [tags.operator, tags.punctuation], color: "#c9c2d4" },
+]);
 
 const theme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "#f3efe6", color: "#1b1914" },
-  ".cm-scroller": { fontFamily: '"IBM Plex Mono", ui-monospace, monospace' },
-  ".cm-content": { fontSize: "13.5px", padding: "10px 0", minHeight: "100%" },
-  ".cm-gutters": { backgroundColor: "#ebe6da", color: "#5e584e", border: "none" },
-  ".cm-activeLine": { backgroundColor: "rgba(157, 28, 44, 0.06)" },
-  ".cm-activeLineGutter": { backgroundColor: "transparent" },
-  "&.cm-focused": { outline: "2px solid #9d1c2c", outlineOffset: "-2px" },
-}, { dark: false });
+  "&": { height: "100%", backgroundColor: "#0c0a12", color: "#f4efe8" },
+  ".cm-scroller": { fontFamily: '"IBM Plex Mono", ui-monospace, monospace', lineHeight: "1.55" },
+  ".cm-content": { fontSize: "14px", padding: "14px 0", caretColor: "#dff56a" },
+  ".cm-gutters": { backgroundColor: "#0c0a12", color: "#6e6680", border: "none", paddingRight: "8px" },
+  ".cm-activeLine": { backgroundColor: "rgba(255, 93, 122, 0.06)" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#f4efe8" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#dff56a" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(223, 245, 106, 0.16)" },
+}, { dark: true });
 
 export function Playground() {
   const [source, setSource] = useState<string | null>(null);
@@ -25,6 +39,7 @@ export function Playground() {
   const [link, setLink] = useState("");
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+
   useEffect(() => {
     const token = tokenFromHash();
     if (!token) {
@@ -52,7 +67,7 @@ export function Playground() {
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           javascript({ typescript: true }),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(axoHighlight),
           theme,
           EditorView.contentAttributes.of({ "aria-label": "TypeScript program" }),
           EditorView.updateListener.of((update) => {
@@ -106,48 +121,55 @@ export function Playground() {
     }
   }
 
+  function loadCounter() {
+    const editor = view.current;
+    if (!editor) return;
+    editor.dispatch({
+      changes: { from: 0, to: editor.state.doc.length, insert: SAMPLE },
+    });
+    setNote("Counter loaded.");
+  }
+
   const diagnostics = result ? formatDiagnostics(result.diagnostics) : "";
 
   return (
     <section className="play">
-      <header className="page-head">
-        <p className="kicker">Playground</p>
-        <h1>TypeScript, Rust, and the IDL.</h1>
-        <p className="deck">The editor is CodeMirror. Rust and the IDL are what this page’s compiler emits. The address bar is the program.</p>
+      <header className="play-bar">
+        <h1>Playground</h1>
+        <span className={!result ? "lamp" : result.ok ? "lamp ok" : "lamp bad"} aria-hidden="true" />
+        <div className="play-tools">
+          <button type="button" onClick={loadCounter}>Load counter</button>
+          <button type="button" onClick={() => void copyLink()}>Copy link</button>
+          <label>
+            <span className="sr">Shareable link</span>
+            <input readOnly value={link || "The link updates as you type."} onFocus={(event) => event.currentTarget.select()} />
+          </label>
+          <p role="status" className="note">{note}</p>
+        </div>
       </header>
-      <div className="share-row">
-        <button type="button" onClick={() => void copyLink()}>Copy link</button>
-        <label>
-          <span className="sr">Shareable link</span>
-          <input readOnly value={link || "The link updates as you type."} onFocus={(event) => event.currentTarget.select()} />
-        </label>
-        <p role="status">{note}</p>
-      </div>
-      {!result ? <p>Loading the editor…</p> : (
-        <>
-          <div className="bench">
-            <Pane title="playground.ts">
-              <div className="cm-host" ref={host} />
-            </Pane>
-            <Pane title="Rust">
-              <pre className="code" dangerouslySetInnerHTML={{ __html: highlightRust(result.rust || "// nothing emitted") }} />
-            </Pane>
-            <Pane title="IDL">
-              <pre className="code">{JSON.stringify(result.idl, null, 2)}</pre>
-            </Pane>
-          </div>
-          <p className={result.ok ? "status-line ok" : "status-line bad"} role="status">
-            {result.ok ? "Compiled." : `The program has errors. ${diagnostics}`}
-          </p>
-        </>
+      {!result ? <p className="loading">Loading the editor…</p> : (
+        <div className={result.ok ? "bench is-ok" : "bench is-bad"}>
+          <Pane title="playground.ts" className="pane-ts">
+            <div className="cm-host" ref={host} />
+            <p className={result.ok ? "diag ok" : "diag bad"} role="status">
+              {result.ok ? "Compiled." : diagnostics || "The program has errors."}
+            </p>
+          </Pane>
+          <Pane title="Rust" className="pane-out">
+            <pre className="code" dangerouslySetInnerHTML={{ __html: highlightRust(result.rust || "// nothing emitted") }} />
+          </Pane>
+          <Pane title="IDL" className="pane-out">
+            <pre className="code">{JSON.stringify(result.idl, null, 2)}</pre>
+          </Pane>
+        </div>
       )}
     </section>
   );
 }
 
-function Pane({ title, children }: { title: string; children: ReactNode }) {
+function Pane({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
   return (
-    <section className="pane" aria-label={title}>
+    <section className={className ? `pane ${className}` : "pane"} aria-label={title}>
       <h2>{title}</h2>
       {children}
     </section>

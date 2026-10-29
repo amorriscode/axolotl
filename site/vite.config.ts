@@ -8,7 +8,7 @@ export default defineConfig({
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
   },
   optimizeDeps: {
-    include: ["typescript"],
+    include: ["typescript", "three"],
   },
   build: {
     outDir: "dist",

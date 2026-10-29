@@ -15,13 +15,20 @@
     "@codemirror/language": "6.13.1",
     "@codemirror/state": "6.5.2",
     "@codemirror/view": "6.38.1",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource/bodoni-moda": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
+    "framer-motion": "^12.43.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "three": "^0.170.0",
     "typescript": "5.9.3"
   },
   "devDependencies": {
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "@types/three": "^0.170.0",
     "@vitejs/plugin-react": "5.1.0",
     "vite": "7.1.12"
   }
