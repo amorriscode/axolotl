@@ -1,18 +1,40 @@
 import {
+  cpi,
+  cpiReturn,
   emit,
+  emitCpi,
   log,
+  present,
+  push,
   require,
   system,
+  token,
   type Account,
+  type AssociatedTokenProgram,
   type Clock,
+  type EpochSchedule,
   type Event,
+  type Instructions,
+  type Mint,
+  type Program,
   type Pubkey,
+  type RemainingAccounts,
   type Rent,
   type Signer,
+  type SlotHashes,
+  type StakeHistory,
+  type Str,
   type SystemAccount,
   type SystemProgram,
+  type Token2022Program,
+  type TokenAccount,
+  type TokenProgram,
+  type UncheckedAccount,
+  type Vec,
+  type ZeroCopy,
   type bytes32,
   type i64,
+  type u128,
   type u16,
   type u32,
   type u64,
@@ -180,6 +202,217 @@ export function initItem(
 ): void {
   item.authority = authority.key;
   item.id = id;
+}
+
+export interface Point {
+  x: u64;
+  y: u64;
+}
+
+export enum Side {
+  Left,
+  Right,
+}
+
+export interface Shape {
+  point: Point;
+  label: Str<8>;
+  samples: Vec<u64, 4>;
+  side: Side;
+}
+
+export interface PodCounter extends ZeroCopy {
+  value: u64;
+}
+
+export interface Grown {
+  authority: Pubkey;
+  note: Str<16>;
+}
+
+function step(value: u64): u64 {
+  return value + 1n;
+}
+
+export function walk(
+  counter: Account<Counter, { mut: true }>,
+  times: u64,
+): void {
+  let i: u64 = 0n;
+  while (i < times) {
+    counter.count = step(counter.count);
+    i = i + 1n;
+    if (i > 1000n) {
+      break;
+    }
+  }
+}
+
+export function bumpOptional(
+  counter: Account<Counter, { mut: true; optional: true }>,
+): void {
+  if (present(counter)) {
+    counter.count = counter.count + 1n;
+  }
+}
+
+export function countRemaining(extra: RemainingAccounts): u64 {
+  return extra.count;
+}
+
+export function initShape(
+  shape: Account<Shape, { init: true; payer: "authority" }>,
+  authority: Signer<{ mut: true }>,
+  systemProgram: SystemProgram,
+): void {
+  shape.point.x = 3n;
+  shape.point.y = 4n;
+  shape.label = "nest";
+  shape.side = Side.Right;
+  push(shape.samples, 9n);
+}
+
+export function initPod(
+  pod: Account<PodCounter, { init: true; payer: "authority" }>,
+  authority: Signer<{ mut: true }>,
+  systemProgram: SystemProgram,
+): void {
+  pod.value = 11n;
+}
+
+export function initGrown(
+  grown: Account<Grown, { init: true; payer: "authority" }>,
+  authority: Signer<{ mut: true }>,
+  systemProgram: SystemProgram,
+): void {
+  grown.authority = authority.key;
+  grown.note = "a";
+}
+
+export function grow(
+  grown: Account<Grown, { mut: true; realloc: 128; payer: "authority" }>,
+  authority: Signer<{ mut: true }>,
+  systemProgram: SystemProgram,
+): void {
+  grown.note = "bigger";
+}
+
+export function readSchedule(schedule: EpochSchedule): u64 {
+  return schedule.slotsPerEpoch;
+}
+
+export function readIndex(instructions: Instructions): u16 {
+  return instructions.index;
+}
+
+export function readHashes(slotHashes: SlotHashes, stakeHistory: StakeHistory): u64 {
+  return slotHashes.bytes + stakeHistory.bytes;
+}
+
+export function openAta(
+  payer: Signer<{ mut: true }>,
+  ata: UncheckedAccount<{ mut: true }>,
+  owner: Signer,
+  mint: Mint,
+  systemProgram: SystemProgram,
+  tokenProgram: TokenProgram,
+  associatedTokenProgram: AssociatedTokenProgram,
+): void {
+  token.createAssociatedAccount({ payer, account: ata, owner, mint });
+}
+
+export function readFee(mint: Mint, tokenProgram: Token2022Program): u16 {
+  return token.transferFeeBasisPoints(mint);
+}
+
+export function pingCpi(clock: Clock, message: string): void {
+  emitCpi<Pinged>({ slot: clock.slot, message });
+}
+
+export function askEcho(echoProgram: Program, value: u64): u64 {
+  return cpiReturn<u64>({
+    program: echoProgram,
+    name: "double",
+    accounts: [],
+    args: [value],
+  });
+}
+
+export function fanout(
+  echoProgram: Program,
+  left: UncheckedAccount<{ seeds: ["left", { account: "user" }]; bump: true }>,
+  right: UncheckedAccount<{ seeds: ["right", { account: "user" }]; bump: true }>,
+  user: Signer,
+  value: u64,
+): void {
+  cpi({
+    program: echoProgram,
+    name: "setPair",
+    accounts: [
+      { account: left, signer: true },
+      { account: right, signer: true },
+    ],
+    args: [value],
+  });
+}
+
+export interface Wide {
+  value: u128;
+}
+
+export function initWide(
+  wide: Account<Wide, { init: true; payer: "authority" }>,
+  authority: Signer<{ mut: true }>,
+  systemProgram: SystemProgram,
+  value: u128,
+): void {
+  wide.value = value;
+}
+
+export function divide(left: u64, right: u64): u64 {
+  return left / right;
+}
+
+export function skipOdds(
+  counter: Account<Counter, { mut: true }>,
+  times: u64,
+): void {
+  let i: u64 = 0n;
+  while (i < times) {
+    i = i + 1n;
+    if (i === 2n) {
+      continue;
+    }
+    counter.count = counter.count + 1n;
+  }
+}
+
+export function cap(
+  counter: Account<Counter, { mut: true }>,
+  times: u64,
+): void {
+  let i: u64 = 0n;
+  while (i < times) {
+    if (counter.count === 2n) {
+      break;
+    }
+    counter.count = counter.count + 1n;
+    i = i + 1n;
+  }
+}
+
+export function touch(
+  counter: Account<Counter, { mut: true; hasOne: ["authority"] }>,
+  authority: Signer,
+): void {
+  counter.count = counter.count + 1n;
+}
+
+export function add(
+  counter: Account<Counter, { mut: true }>,
+  amount: u64,
+): void {
+  counter.count = counter.count + amount;
 }
 
 export function reopen(

@@ -175,7 +175,7 @@ function CompilerPage() {
       <h2>Parse</h2>
       <p>The TypeScript compiler API builds a source file. Axolotl walks interfaces and exported functions. Anything else — classes, <code>async</code>, arbitrary calls — is an error that names the file and line.</p>
       <h2>Model</h2>
-      <p>Parameters become accounts or arguments. Account options are read from the type literal, including seeds. The body is lowered to a small statement list: assignments, <code>if</code>, the one supported loop, <code>require</code>, <code>emit</code>, <code>log</code>, and CPI.</p>
+      <p>Parameters become accounts or arguments. Account options are read from the type literal, including seeds. The body is lowered to a small statement list: assignments, <code>if</code>, <code>while</code>, a restricted <code>for</code> loop, <code>require</code>, <code>emit</code>, <code>emitCpi</code>, <code>log</code>, and CPI.</p>
       <h2>Emit</h2>
       <p>Rust uses <code>#[program]</code>, <code>#[account]</code>, and <code>#[event]</code>. Integer math is <code>checked_add</code> and its siblings. The IDL uses Anchor's sighash: <code>sha256("global:name")[..8]</code> for instructions, <code>account:</code> and <code>event:</code> for the others. A source map records which TypeScript line produced each Rust line, so a rustc error can be printed next to the original source.</p>
       <h2>Build</h2>

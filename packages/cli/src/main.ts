@@ -128,6 +128,9 @@ function writeAnchorProject(project: ProjectConfig, id: string, secret: number[]
   writeFileSync(path.join(programDir, "src", "lib.rs"), rust);
   const usesSpl = rust.includes("anchor_spl");
   const usesInit = rust.includes("init_if_needed");
+  const usesEventCpi = rust.includes("emit_cpi!");
+  const usesZeroCopy = rust.includes("account(zero_copy)");
+  const defaults = [usesInit ? "init-if-needed" : "", usesEventCpi ? "event-cpi" : ""].filter(Boolean);
   const features = [
     "no-entrypoint = []",
     "no-idl = []",
@@ -135,7 +138,8 @@ function writeAnchorProject(project: ProjectConfig, id: string, secret: number[]
     'cpi = ["no-entrypoint"]',
     `idl-build = ["anchor-lang/idl-build"${usesSpl ? ', "anchor-spl/idl-build"' : ""}]`,
     usesInit ? 'init-if-needed = ["anchor-lang/init-if-needed"]' : "",
-    usesInit ? 'default = ["init-if-needed"]' : "default = []",
+    usesEventCpi ? 'event-cpi = ["anchor-lang/event-cpi"]' : "",
+    defaults.length > 0 ? `default = [${defaults.map((name) => `"${name}"`).join(", ")}]` : "default = []",
   ].filter(Boolean);
   const cargo = `[package]
 name = "${project.name.replaceAll("_", "-")}"
@@ -152,7 +156,7 @@ ${features.join("\n")}
 
 [dependencies]
 anchor-lang = "${project.anchor}"
-${usesSpl ? `anchor-spl = "${project.anchor}"\n` : ""}`;
+${usesSpl ? `anchor-spl = "${project.anchor}"\n` : ""}${usesZeroCopy ? 'bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }\n' : ""}`;
   writeFileSync(path.join(programDir, "Cargo.toml"), cargo);
   const workspace = path.join(project.root, "Cargo.toml");
   if (!existsSync(workspace)) {

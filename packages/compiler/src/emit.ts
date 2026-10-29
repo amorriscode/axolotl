@@ -12,11 +12,17 @@ import type {
   SourceMap,
   StructModel,
 } from "./model.ts";
-import { accountSpace, idlType, rustType, snake } from "./util.ts";
+import { accountSpace, idlFieldType, idlType, rustFieldType, rustType, snake } from "./util.ts";
 
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 const CLOCK = "SysvarC1ock11111111111111111111111111111111";
 const RENT = "SysvarRent111111111111111111111111111111111";
+const INSTRUCTIONS = "Sysvar1nstructions1111111111111111111111111";
+const EPOCH = "SysvarEpochSchedu1e111111111111111111111111";
+const SLOT_HASHES = "SysvarS1otHashes111111111111111111111111111";
+const STAKE_HISTORY = "SysvarStakeHistory1111111111111111111111111";
+const TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const ASSOCIATED_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 
 export function emitRust(program: ProgramModel): { rust: string; sourceMap: SourceMap } {
   const lines: string[] = [];
@@ -37,6 +43,8 @@ export function emitRust(program: ProgramModel): { rust: string; sourceMap: Sour
   push("");
   push(`declare_id!("${program.programId}");`);
   push("");
+  for (const helper of program.helpers) emitHelper(helper, push);
+  if (program.helpers.length > 0) push("");
   push("#[program]");
   push(`pub mod ${program.rustName} {`);
   push("    use super::*;");
@@ -49,7 +57,15 @@ export function emitRust(program: ProgramModel): { rust: string; sourceMap: Sour
   push("}");
   push("");
 
-  for (const struct of program.structs) emitStruct(struct, push);
+  for (const item of program.enums) {
+    push("#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]");
+    push(`pub enum ${item.name} {`);
+    for (const variant of item.variants) push(`    ${variant.rustName},`);
+    push("}");
+    push("");
+  }
+  const structFields = new Map(program.structs.map((item) => [item.name, item.fields]));
+  for (const struct of program.structs) emitStruct(struct, structFields, push);
 
   for (const instruction of program.instructions) {
     if (instruction.failed) continue;
@@ -79,30 +95,59 @@ function emitInstruction(
   const args = instruction.params.filter((param): param is ArgParam => param.kind === "arg");
   const argList = args.map((arg) => `${arg.rustName}: ${rustType(arg.ty)}`).join(", ");
   const params = [`ctx: Context<${pascal(instruction.rustName)}>`, argList].filter(Boolean).join(", ");
-  push(`    pub fn ${instruction.rustName}(${params}) -> Result<()> {`, instruction.loc);
+  const ret = instruction.returnType ? rustType(instruction.returnType) : "()";
+  push(`    pub fn ${instruction.rustName}(${params}) -> Result<${ret}> {`, instruction.loc);
   for (const stmt of instruction.body) {
     for (const line of stmt.code.split("\n")) {
       push(line.length ? `        ${line}` : "", stmt.loc);
     }
   }
-  push("        Ok(())");
+  if (!instruction.returnType) push("        Ok(())");
   push("    }");
 }
 
-function emitStruct(struct: StructModel, push: (text: string, loc?: Loc) => void): void {
-  if (struct.kind === "account") {
-    const space = accountSpace(struct.fields);
+function emitHelper(helper: ProgramModel["helpers"][number], push: (text: string, loc?: Loc) => void): void {
+  const args = helper.params.map((param) => `${param.rustName}: ${rustType(param.ty)}`).join(", ");
+  const ret = helper.returnType ? rustType(helper.returnType) : "()";
+  push(`fn ${helper.rustName}(${args}) -> Result<${ret}> {`, helper.loc);
+  for (const stmt of helper.body) {
+    for (const line of stmt.code.split("\n")) push(line.length ? `    ${line}` : "", stmt.loc);
+  }
+  if (!helper.returnType) push("    Ok(())");
+  push("}");
+  push("");
+}
+
+function emitStruct(struct: StructModel, structs: Map<string, StructModel["fields"]>, push: (text: string, loc?: Loc) => void): void {
+  const fields = () => {
+    for (const field of struct.fields) push(`    pub ${field.rustName}: ${rustFieldType(field.ty)},`, field.loc);
+  };
+  if (struct.kind === "account" && struct.zeroCopy) {
+    push("#[account(zero_copy)]", struct.loc);
+    push(`pub struct ${struct.name} {`, struct.loc);
+    fields();
+    push("}");
+    push(`impl ${struct.name} {`);
+    push(`    pub const INIT_SPACE: usize = std::mem::size_of::<${struct.name}>();`);
+    push("}");
+  } else if (struct.kind === "account") {
+    const space = accountSpace(struct.fields, structs);
     push("#[account]", struct.loc);
     push(`pub struct ${struct.name} {`, struct.loc);
-    for (const field of struct.fields) push(`    pub ${field.rustName}: ${rustType(field.ty)},`, field.loc);
+    fields();
     push("}");
     push(`impl ${struct.name} {`);
     push(`    pub const INIT_SPACE: usize = ${space};`);
     push("}");
-  } else {
+  } else if (struct.kind === "event") {
     push("#[event]", struct.loc);
     push(`pub struct ${struct.name} {`, struct.loc);
-    for (const field of struct.fields) push(`    pub ${field.rustName}: ${rustType(field.ty)},`, field.loc);
+    fields();
+    push("}");
+  } else {
+    push("#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]", struct.loc);
+    push(`pub struct ${struct.name} {`, struct.loc);
+    fields();
     push("}");
   }
   push("");
@@ -116,20 +161,28 @@ function emitAccounts(
   const accounts = instruction.params.filter((param): param is AccountParam => param.kind === "account");
   const args = instruction.params.filter((param): param is ArgParam => param.kind === "arg");
   const usesArgSeed = accounts.some((account) => account.opts.seeds.some((seed) => seed.kind === "arg"));
+  if (instruction.usesEventCpi) push("#[event_cpi]");
   push("#[derive(Accounts)]");
   if (usesArgSeed) {
     const list = args.map((arg) => `${arg.rustName}: ${rustType(arg.ty)}`).join(", ");
     push(`#[instruction(${list})]`);
   }
   const structName = pascal(instruction.rustName);
+  const emitted = accounts.filter((account) => account.accountKind !== "remaining");
+  if (emitted.length === 0 && !instruction.usesEventCpi) {
+    push(`pub struct ${structName} {}`);
+    push("");
+    return;
+  }
   push(`pub struct ${structName}<'info> {`);
   for (const account of accounts) {
+    if (account.accountKind === "remaining") continue;
     const attr = accountAttr(account, program);
-    if (account.accountKind === "unchecked" || account.accountKind === "program") {
+    if (account.accountKind === "unchecked" || account.accountKind === "program" || account.accountKind === "instructions" || account.accountKind === "slotHashes" || account.accountKind === "stakeHistory" || account.accountKind === "associatedToken") {
       push("    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.");
     }
     if (attr) push(`    #[account(${attr})]`);
-    push(`    pub ${account.rustName}: ${accountRustType(account)},`);
+    push(`    pub ${account.rustName}: ${accountRustType(account, program)},`);
   }
   push("}");
   push("");
@@ -140,11 +193,13 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
   const { opts } = account;
   if (opts.init) parts.push("init");
   if (opts.initIfNeeded) parts.push("init_if_needed");
-  if (opts.payer) parts.push(`payer = ${snake(opts.payer)}`);
+  if (opts.payer && (opts.init || opts.initIfNeeded)) parts.push(`payer = ${snake(opts.payer)}`);
   if ((opts.init || opts.initIfNeeded) && account.accountType) {
     parts.push(`space = 8 + ${account.accountType}::INIT_SPACE`);
   }
-  if (opts.mut && !opts.init && !opts.initIfNeeded) parts.push("mut");
+  if (opts.realloc !== undefined) {
+    parts.push("mut", `realloc = ${opts.realloc}`, `realloc::payer = ${snake(opts.payer ?? "")}`, "realloc::zero = true");
+  } else if (opts.mut && !opts.init && !opts.initIfNeeded) parts.push("mut");
   if (opts.seeds.length > 0) {
     const seeds = opts.seeds.map((seed) => seedRust(seed, program, instructionArgs(account, program))).join(", ");
     parts.push(`seeds = [${seeds}]`);
@@ -157,6 +212,10 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
   }
   for (const rel of opts.hasOne) parts.push(`has_one = ${snake(rel)}`);
   if (opts.close) parts.push(`close = ${snake(opts.close)}`);
+  if (account.accountKind === "instructions") parts.push(`address = pubkey!("${INSTRUCTIONS}")`);
+  if (account.accountKind === "slotHashes") parts.push(`address = pubkey!("${SLOT_HASHES}")`);
+  if (account.accountKind === "stakeHistory") parts.push(`address = pubkey!("${STAKE_HISTORY}")`);
+  if (account.accountKind === "associatedToken") parts.push(`address = pubkey!("${ASSOCIATED_TOKEN}")`);
   return parts.join(", ");
 }
 
@@ -181,16 +240,24 @@ function seedRust(seed: SeedModel, program: ProgramModel, args: ArgParam[]): str
   return `${name}.to_le_bytes().as_ref()`;
 }
 
-function accountRustType(account: AccountParam): string {
+function accountRustType(account: AccountParam, program: ProgramModel): string {
   switch (account.accountKind) {
-    case "user":
-      return `Account<'info, ${account.accountType}>`;
+    case "user": {
+      const zeroCopy = program.structs.find((item) => item.name === account.accountType)?.zeroCopy;
+      if (zeroCopy) return `AccountLoader<'info, ${account.accountType}>`;
+      return account.opts.optional
+        ? `Option<Account<'info, ${account.accountType}>>`
+        : `Account<'info, ${account.accountType}>`;
+    }
     case "signer":
       return "Signer<'info>";
     case "system":
       return "Program<'info, System>";
     case "tokenProgram":
+    case "token2022":
       return "Interface<'info, TokenInterface>";
+    case "associatedToken":
+      return "UncheckedAccount<'info>";
     case "tokenAccount":
       return "InterfaceAccount<'info, TokenAccount>";
     case "mint":
@@ -204,6 +271,15 @@ function accountRustType(account: AccountParam): string {
       return "Sysvar<'info, Clock>";
     case "rent":
       return "Sysvar<'info, Rent>";
+    case "instructions":
+      return "UncheckedAccount<'info>";
+    case "epochSchedule":
+      return "Sysvar<'info, EpochSchedule>";
+    case "slotHashes":
+    case "stakeHistory":
+      return "UncheckedAccount<'info>";
+    case "remaining":
+      return "AccountInfo<'info>";
     default:
       return "UncheckedAccount<'info>";
   }
@@ -228,8 +304,21 @@ function emitCodec(push: (text: string, loc?: Loc) => void): void {
       push("    pub fn push_bytes32(data: &mut Vec<u8>, value: &[u8; 32]) { data.extend_from_slice(value); }");
     } else {
       push(`    pub fn push_${scalar}(data: &mut Vec<u8>, value: ${scalar}) { data.extend_from_slice(&value.to_le_bytes()); }`);
+      push(`    pub fn read_${scalar}(data: &[u8]) -> ${scalar} {`);
+      push(`        let mut buf = [0u8; ${scalar === "u128" || scalar === "i128" ? 16 : scalar === "u64" || scalar === "i64" ? 8 : scalar === "u32" || scalar === "i32" ? 4 : scalar === "u16" || scalar === "i16" ? 2 : 1}];`);
+      push("        let len = buf.len();");
+      push("        buf.copy_from_slice(&data[..len]);");
+      push(`        ${scalar}::from_le_bytes(buf)`);
+      push("    }");
     }
   }
+  push("    pub fn transfer_fee_bps(mint: &AccountInfo) -> Result<u16> {");
+  push("        use anchor_spl::token_2022::spl_token_2022::extension::BaseStateWithExtensions;");
+  push("        let data = mint.try_borrow_data()?;");
+  push("        let state = anchor_spl::token_2022::spl_token_2022::extension::StateWithExtensions::<anchor_spl::token_2022::spl_token_2022::state::Mint>::unpack(&data)?;");
+  push("        let config = state.get_extension::<anchor_spl::token_2022::spl_token_2022::extension::transfer_fee::TransferFeeConfig>()?;");
+  push("        Ok(u16::from(config.newer_transfer_fee.transfer_fee_basis_points))");
+  push("    }");
   push("}");
   push("");
 }
@@ -250,7 +339,7 @@ export function emitIdl(program: ProgramModel): Idl {
     instructions: program.instructions.filter((instruction) => !instruction.failed).map((instruction) => ({
       name: instruction.rustName,
       discriminator: discriminator("global", instruction.rustName),
-      accounts: idlAccounts(instruction),
+      accounts: idlAccounts(instruction, program),
       args: instruction.params.filter((param): param is ArgParam => param.kind === "arg").map((arg) => ({
         name: arg.rustName,
         type: idlType(arg.ty),
@@ -260,13 +349,22 @@ export function emitIdl(program: ProgramModel): Idl {
       name: struct.name,
       discriminator: discriminator("account", struct.name),
     })),
-    types: program.structs.map((struct) => ({
-      name: struct.name,
-      type: {
-        kind: "struct" as const,
-        fields: struct.fields.map((field) => ({ name: field.rustName, type: idlType(field.ty) })),
-      },
-    })),
+    types: [
+      ...program.structs.map((struct) => ({
+        name: struct.name,
+        type: {
+          kind: "struct" as const,
+          fields: struct.fields.map((field) => ({ name: field.rustName, type: idlFieldType(field.ty) })),
+        },
+      })),
+      ...program.enums.map((item) => ({
+        name: item.name,
+        type: {
+          kind: "enum" as const,
+          variants: item.variants.map((variant) => ({ name: variant.rustName })),
+        },
+      })),
+    ],
     events: program.structs.filter((struct) => struct.kind === "event").map((struct) => ({
       name: struct.name,
       discriminator: discriminator("event", struct.name),
@@ -279,8 +377,8 @@ export function emitIdl(program: ProgramModel): Idl {
   };
 }
 
-function idlAccounts(instruction: InstructionModel): IdlAccount[] {
-  const params = instruction.params.filter((param): param is AccountParam => param.kind === "account");
+function idlAccounts(instruction: InstructionModel, program: ProgramModel): IdlAccount[] {
+  const params = instruction.params.filter((param): param is AccountParam => param.kind === "account" && param.accountKind !== "remaining");
   const accounts = params.map((account) => idlAccount(account));
   for (const account of params) {
     for (const relation of account.opts.hasOne) {
@@ -289,11 +387,18 @@ function idlAccounts(instruction: InstructionModel): IdlAccount[] {
       target.relations = [...(target.relations ?? []), account.rustName];
     }
   }
+  if (instruction.usesEventCpi) {
+    accounts.push({
+      name: "event_authority",
+      pda: { seeds: [{ kind: "const", value: [...new TextEncoder().encode("__event_authority")] }] },
+    });
+    accounts.push({ name: "program", address: program.programId });
+  }
   return accounts;
 }
 
 function idlAccount(account: AccountParam): IdlAccount {
-  const writable = account.opts.mut || account.opts.init || account.opts.initIfNeeded || Boolean(account.opts.close);
+  const writable = account.opts.mut || account.opts.init || account.opts.initIfNeeded || account.opts.realloc !== undefined || Boolean(account.opts.close);
   const signer = account.accountKind === "signer" || ((account.opts.init || account.opts.initIfNeeded) && account.opts.seeds.length === 0);
   const result: IdlAccount = { name: account.rustName };
   if (writable) result.writable = true;
@@ -301,6 +406,13 @@ function idlAccount(account: AccountParam): IdlAccount {
   if (account.accountKind === "system") result.address = SYSTEM_PROGRAM;
   if (account.accountKind === "clock") result.address = CLOCK;
   if (account.accountKind === "rent") result.address = RENT;
+  if (account.accountKind === "instructions") result.address = INSTRUCTIONS;
+  if (account.accountKind === "epochSchedule") result.address = EPOCH;
+  if (account.accountKind === "slotHashes") result.address = SLOT_HASHES;
+  if (account.accountKind === "stakeHistory") result.address = STAKE_HISTORY;
+  if (account.accountKind === "token2022") result.address = TOKEN_2022;
+  if (account.accountKind === "associatedToken") result.address = ASSOCIATED_TOKEN;
+  if (account.opts.optional) result.optional = true;
   if (account.opts.seeds.length > 0) {
     result.pda = {
       seeds: account.opts.seeds.map((seed) => {

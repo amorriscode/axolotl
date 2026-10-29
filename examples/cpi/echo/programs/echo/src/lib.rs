@@ -20,6 +20,16 @@ pub mod echo {
         Ok(())
     }
 
+    pub fn double(ctx: Context<Double>, value: u64) -> Result<u64> {
+        return Ok(value.checked_add(value).ok_or(AxolotlError::ArithmeticOverflow)?);
+    }
+
+    pub fn set_pair(ctx: Context<SetPair>, value: u64) -> Result<()> {
+        require!((ctx.accounts.left.key() != ctx.accounts.right.key()), AxolotlError::SameSigner);
+        msg!("{}", value);
+        Ok(())
+    }
+
 }
 
 #[account]
@@ -43,5 +53,22 @@ pub struct Initialize<'info> {
 pub struct SetValue<'info> {
     #[account(mut)]
     pub data: Account<'info, EchoData>,
+}
+
+#[derive(Accounts)]
+pub struct Double {}
+
+#[derive(Accounts)]
+pub struct SetPair<'info> {
+    pub left: Signer<'info>,
+    pub right: Signer<'info>,
+}
+
+#[error_code]
+pub enum AxolotlError {
+    #[msg("Same signer")]
+    SameSigner,
+    #[msg("Arithmetic overflow or division by zero")]
+    ArithmeticOverflow,
 }
 

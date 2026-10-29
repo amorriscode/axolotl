@@ -10,7 +10,7 @@ export interface IdlField {
   type: IdlType;
 }
 
-export type IdlType = string | { array: [string, number] } | { defined: { name: string } };
+export type IdlType = string | { array: [string, number] } | { vec: string } | { defined: { name: string } };
 
 export interface IdlInstruction {
   name: string;
@@ -23,7 +23,7 @@ export interface IdlLike {
   address?: string;
   instructions: IdlInstruction[];
   accounts?: { name: string; discriminator: number[] }[];
-  types?: { name: string; type: { kind: string; fields: IdlField[] } }[];
+  types?: { name: string; type: { kind: string; fields?: IdlField[]; variants?: { name: string }[] } }[];
   events?: { name: string; discriminator: number[] }[];
   errors?: { code: number; name: string; msg?: string }[];
 }
@@ -178,7 +178,24 @@ function writeField(writer: Writer, type: IdlType, value: unknown): void {
   else writer.uint(numberValue, size);
 }
 
-function readField(reader: Reader, type: IdlType): unknown {
+function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
+  if (typeof type === "object" && type && "vec" in type) {
+    const length = Number(reader.uint(4));
+    const items = [];
+    for (let i = 0; i < length; i++) items.push(readField(reader, type.vec, idl));
+    return items;
+  }
+  if (typeof type === "object" && type && "defined" in type) {
+    const defined = idl?.types?.find((item) => item.name === type.defined.name);
+    if (!defined) throw new Error(`Unknown type ${type.defined.name}`);
+    if (defined.type.kind === "enum") {
+      const index = reader.u8();
+      return defined.type.variants[index]?.name ?? index;
+    }
+    const result: Record<string, unknown> = {};
+    for (const field of defined.type.fields ?? []) result[field.name] = readField(reader, field.type, idl);
+    return result;
+  }
   if (typeof type === "object" && "array" in type) {
     const bytes = reader.bytes(type.array[1]);
     let end = bytes.length;
@@ -229,7 +246,7 @@ export function decodeAccount(idl: IdlLike, account: string, data: Uint8Array): 
     }
   }
   const result: Record<string, unknown> = {};
-  for (const field of defined.type.fields) result[field.name] = readField(reader, field.type);
+  for (const field of defined.type.fields ?? []) result[field.name] = readField(reader, field.type, idl);
   return result;
 }
 
@@ -242,11 +259,11 @@ export function decodeEvent(idl: IdlLike, data: Uint8Array): { name: string; dat
   if (!defined) return null;
   const reader = new Reader(data.subarray(8));
   const decoded: Record<string, unknown> = {};
-  for (const field of defined.type.fields) decoded[field.name] = readField(reader, field.type);
+  for (const field of defined.type.fields ?? []) decoded[field.name] = readField(reader, field.type, idl);
   return { name: event.name, data: decoded };
 }
 
-/** Anchor prints events as `Program data: <base64>`. */
+/** Anchor prints `emit!` events as `Program data: <base64>`. */
 export function decodeEventLogs(idl: IdlLike, logs: string[]): { name: string; data: Record<string, unknown> }[] {
   const events = [];
   for (const line of logs) {
@@ -255,6 +272,24 @@ export function decodeEventLogs(idl: IdlLike, logs: string[]): { name: string; d
     if (at < 0) continue;
     const bytes = Uint8Array.from(atob(line.slice(at + marker.length).trim()), (char) => char.charCodeAt(0));
     const decoded = decodeEvent(idl, bytes);
+    if (decoded) events.push(decoded);
+  }
+  return events;
+}
+
+/**
+ * `sha256("anchor:event")[..8]`, little-endian. Anchor 1.2 `emit_cpi!` prefixes
+ * the self-CPI instruction with this tag and does not call `sol_log_data`.
+ */
+export const EVENT_IX_TAG = Uint8Array.from([0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d]);
+
+/** Decode events carried in `emit_cpi!` self-CPI instruction data. */
+export function decodeEventInstructions(idl: IdlLike, instructions: Uint8Array[]): { name: string; data: Record<string, unknown> }[] {
+  const events = [];
+  for (const data of instructions) {
+    if (data.length < EVENT_IX_TAG.length + 8) continue;
+    if (EVENT_IX_TAG.some((byte, index) => data[index] !== byte)) continue;
+    const decoded = decodeEvent(idl, data.subarray(EVENT_IX_TAG.length));
     if (decoded) events.push(decoded);
   }
   return events;

@@ -4,6 +4,8 @@ import type {
   AccountParam,
   ArgParam,
   ErrorModel,
+  FieldTy,
+  HelperModel,
   InstructionModel,
   Param,
   ProgramModel,
@@ -12,7 +14,7 @@ import type {
   Stmt,
   StructModel,
 } from "./model.ts";
-import type { ParsedInstruction, ParsedProgram } from "./parse.ts";
+import type { ParsedHelper, ParsedInstruction, ParsedProgram } from "./parse.ts";
 import { discriminator } from "./codec.ts";
 import { fits, isInteger, isRustKeyword, rustByteStr, rustLiteral, rustString, snake, variantName } from "./util.ts";
 
@@ -28,9 +30,11 @@ interface Scope {
   locals: Map<string, Local>;
 }
 
+type ValueTy = Scalar | { struct: string } | { enum: string } | { vec: Scalar };
+
 interface Expr {
   rust: string;
-  ty: Scalar;
+  ty: ValueTy;
   adaptable?: { kind: "int"; value: bigint };
 }
 
@@ -39,9 +43,16 @@ interface LowerContext {
   sf: ts.SourceFile;
   scope: Scope;
   structs: StructModel[];
+  enums: Map<string, { name: string; rustName: string }[]>;
+  helpers: Map<string, HelperModel>;
   errors: ErrorModel[];
   usesArithmetic: boolean;
   temps: number;
+  pending: Stmt[];
+  returnType?: Scalar;
+  usesEventCpi: boolean;
+  inHelper: boolean;
+  cpiRead?: Expr;
 }
 
 export function lowerProgram(
@@ -56,11 +67,23 @@ export function lowerProgram(
   let usesArithmetic = false;
   let usesCpi = false;
   let usesRawCpi = false;
+  let usesEventCpi = false;
+  const enums = new Map(parsed.enums.map((item) => [item.name, item.variants]));
+  const helpers = new Map<string, HelperModel>();
+  for (const helper of parsed.helpers) {
+    helpers.set(helper.name, { ...helper, body: [] });
+  }
+  for (const helper of parsed.helpers) {
+    const model = helpers.get(helper.name)!;
+    const ctx = helperContext(helper, parsed.structs, enums, helpers, errors, diag);
+    model.body = lowerBlock(helper.body, ctx, true).stmts;
+    if (ctx.usesArithmetic) usesArithmetic = true;
+  }
 
   for (const instruction of parsed.instructions) {
     validateAccounts(instruction, parsed.structs, diag);
     for (const param of instruction.params) {
-      if (param.kind === "account" && (param.accountKind === "tokenAccount" || param.accountKind === "mint" || param.accountKind === "tokenProgram")) {
+      if (param.kind === "account" && (param.accountKind === "tokenAccount" || param.accountKind === "mint" || param.accountKind === "tokenProgram" || param.accountKind === "token2022")) {
         usesSpl = true;
       }
       if (param.kind === "account" && param.opts.initIfNeeded) usesInitIfNeeded = true;
@@ -70,9 +93,15 @@ export function lowerProgram(
       sf: instruction.sourceFile,
       scope: scopeOf(instruction.params),
       structs: parsed.structs,
+      enums,
+      helpers,
       errors,
       usesArithmetic: false,
       temps: 0,
+      pending: [],
+      returnType: instruction.returnType,
+      usesEventCpi: false,
+      inHelper: false,
     };
     const before = diag.items.length;
     const body = lowerBlock(instruction.body, ctx, true).stmts;
@@ -81,6 +110,7 @@ export function lowerProgram(
       usesCpi = true;
     }
     if (body.some((stmt) => stmt.code.includes("ax_codec"))) usesRawCpi = true;
+    if (ctx.usesEventCpi) usesEventCpi = true;
     const failed = diag.items.slice(before).some((item) => item.severity === "error");
     instructions.push({
       name: instruction.name,
@@ -89,6 +119,8 @@ export function lowerProgram(
       loc: instruction.loc,
       file: instruction.file,
       body: failed ? [] : body,
+      returnType: instruction.returnType,
+      usesEventCpi: ctx.usesEventCpi,
       failed,
     });
   }
@@ -104,6 +136,8 @@ export function lowerProgram(
     version: options.version,
     description: options.description,
     structs: parsed.structs,
+    enums: parsed.enums,
+    helpers: [...helpers.values()],
     instructions,
     errors,
     usesSpl,
@@ -111,6 +145,36 @@ export function lowerProgram(
     usesArithmetic,
     usesCpi,
     usesRawCpi,
+    usesEventCpi,
+  };
+}
+
+function helperContext(
+  helper: ParsedHelper,
+  structs: StructModel[],
+  enums: Map<string, { name: string; rustName: string }[]>,
+  helpers: Map<string, HelperModel>,
+  errors: ErrorModel[],
+  diag: Diagnostics,
+): LowerContext {
+  const args = new Map<string, ArgParam>();
+  for (const param of helper.params) {
+    args.set(param.name, { kind: "arg", name: param.name, rustName: param.rustName, ty: param.ty, loc: param.loc });
+  }
+  return {
+    diag,
+    sf: helper.sourceFile,
+    scope: { accounts: new Map(), args, locals: new Map() },
+    structs,
+    enums,
+    helpers,
+    errors,
+    usesArithmetic: false,
+    temps: 0,
+    pending: [],
+    returnType: helper.returnType,
+    usesEventCpi: false,
+    inHelper: true,
   };
 }
 
@@ -138,6 +202,8 @@ function validateAccounts(instruction: ParsedInstruction, structs: StructModel[]
       if (param.accountKind !== "user") diag.error(instruction.file, param.loc.line, param.loc.column, "Only program accounts (Account<YourType>) can be initialized.");
     }
     if (opts.close && !names.has(opts.close)) diag.error(instruction.file, param.loc.line, param.loc.column, `close target "${opts.close}" is not an account of this instruction.`);
+    if (opts.realloc !== undefined && !opts.payer) diag.error(instruction.file, param.loc.line, param.loc.column, `realloc on "${param.name}" needs a payer.`);
+    if (opts.optional && (opts.init || opts.initIfNeeded)) diag.error(instruction.file, param.loc.line, param.loc.column, "Optional accounts cannot be initialized in the same instruction.");
     for (const rel of opts.hasOne) {
       if (!names.has(rel)) diag.error(instruction.file, param.loc.line, param.loc.column, `hasOne account "${rel}" is not a parameter.`);
       if (param.accountKind === "user" && param.accountType) {
@@ -199,16 +265,48 @@ function lowerStmt(node: ts.Statement, ctx: LowerContext): Stmt[] {
   const loc = locOf(ctx.sf, node);
   if (ts.isBlock(node)) return lowerBlock(node, ctx, false).stmts;
   if (ts.isEmptyStatement(node)) return [];
-  if (ts.isReturnStatement(node)) {
-    if (node.expression) ctx.diag.errorAt(ctx.sf, node, "Instructions cannot return a value. Use `return;` to exit early.");
-    return [{ code: "return Ok(());", loc }];
-  }
+  if (ts.isReturnStatement(node)) return lowerReturn(node, ctx, loc);
+  if (ts.isBreakStatement(node)) return [{ code: "break;", loc }];
+  if (ts.isContinueStatement(node)) return [{ code: "continue;", loc }];
   if (ts.isVariableStatement(node)) return lowerVar(node, ctx, loc);
   if (ts.isIfStatement(node)) return lowerIf(node, ctx, loc);
+  if (ts.isWhileStatement(node)) return lowerWhile(node, ctx, loc);
   if (ts.isForStatement(node)) return lowerFor(node, ctx, loc);
   if (ts.isExpressionStatement(node)) return lowerExprStmt(node.expression, ctx, loc);
-  ctx.diag.errorAt(ctx.sf, node, "Unsupported statement. Use assignments, if/else, a restricted for loop, require, emit, log, system.transfer, token.transferChecked, or cpi.");
+  ctx.diag.errorAt(ctx.sf, node, "Unsupported statement. Use assignments, if/else, while, a restricted for loop, require, emit, log, system.transfer, token.transferChecked, or cpi.");
   return [];
+}
+
+function lowerReturn(node: ts.ReturnStatement, ctx: LowerContext, loc: Loc): Stmt[] {
+  if (!node.expression) return [{ code: "return Ok(());", loc }];
+  if (!ctx.returnType) {
+    ctx.diag.errorAt(ctx.sf, node, "This function does not return a value. Use `return;` or add a scalar return type.");
+    return [];
+  }
+  const expr = lowerExpr(node.expression, ctx, ctx.returnType);
+  if (!expr) return [];
+  const concrete = adapt(expr, ctx.returnType, ctx, node.expression);
+  if (!concrete) return [];
+  return [...takePending(ctx), { code: `return Ok(${concrete.rust});`, loc }];
+}
+
+function lowerWhile(node: ts.WhileStatement, ctx: LowerContext, loc: Loc): Stmt[] {
+  if (!ts.isBlock(node.statement)) {
+    ctx.diag.errorAt(ctx.sf, node, "while bodies must be blocks.");
+    return [];
+  }
+  const cond = lowerExpr(node.expression, ctx, "bool");
+  if (!cond) return [];
+  const concrete = adapt(cond, "bool", ctx, node.expression);
+  if (!concrete) return [];
+  const body = lowerBlock(node.statement, ctx, false).stmts;
+  return [...takePending(ctx), { code: `while ${concrete.rust} {\n${indent(body)}\n}`, loc }];
+}
+
+function takePending(ctx: LowerContext): Stmt[] {
+  const pending = ctx.pending;
+  ctx.pending = [];
+  return pending;
 }
 
 function lowerVar(node: ts.VariableStatement, ctx: LowerContext, loc: Loc): Stmt[] {
@@ -239,13 +337,13 @@ function lowerVar(node: ts.VariableStatement, ctx: LowerContext, loc: Loc): Stmt
   const expr = lowerExpr(decl.initializer, ctx, annotated);
   if (!expr) return [];
   const concrete = annotated ? adapt(expr, annotated, ctx, decl.initializer) : expr;
-  if (!concrete || concrete.adaptable) {
+  if (!concrete || concrete.adaptable || typeof concrete.ty !== "string") {
     ctx.diag.errorAt(ctx.sf, decl, `Give "${name}" a type annotation such as \`: u64\`.`);
     return [];
   }
   const mutable = (node.declarationList.flags & ts.NodeFlags.Const) === 0;
   ctx.scope.locals.set(name, { rustName, ty: concrete.ty, mutable });
-  return [{ code: `let mut ${rustName}: ${rustTy(concrete.ty)} = ${concrete.rust};`, loc }];
+  return [...takePending(ctx), { code: `let mut ${rustName}: ${rustTy(concrete.ty)} = ${concrete.rust};`, loc }];
 }
 
 function lowerIf(node: ts.IfStatement, ctx: LowerContext, loc: Loc): Stmt[] {
@@ -347,6 +445,15 @@ function lowerAssign(expr: ts.BinaryExpression, ctx: LowerContext, loc: Loc): St
     const token = op === ts.SyntaxKind.PlusEqualsToken ? ts.SyntaxKind.PlusToken : ts.SyntaxKind.MinusToken;
     valueNode = ts.factory.createBinaryExpression(expr.left, token, expr.right);
   }
+  if (typeof target.ty !== "string") {
+    const value = lowerExpr(valueNode, ctx);
+    if (!value || !sameTy(value.ty, target.ty)) {
+      ctx.diag.errorAt(ctx.sf, expr.right, "Type mismatch.");
+      return [];
+    }
+    const temp = fresh(ctx);
+    return [...takePending(ctx), { code: `let ${temp} = ${value.rust};`, loc }, { code: `${target.place} = ${temp};`, loc }];
+  }
   const value = lowerExpr(valueNode, ctx, target.ty);
   if (!value) return [];
   const concrete = adapt(value, target.ty, ctx, expr.right);
@@ -365,7 +472,7 @@ function lowerAssign(expr: ts.BinaryExpression, ctx: LowerContext, loc: Loc): St
   ];
 }
 
-function assignTarget(node: ts.Expression, ctx: LowerContext): { place: string; ty: Scalar; kind: "local" | "field"; name: string } | null {
+function assignTarget(node: ts.Expression, ctx: LowerContext): { place: string; ty: ValueTy; kind: "local" | "field"; name: string } | null {
   if (ts.isIdentifier(node)) {
     const local = ctx.scope.locals.get(node.text);
     if (!local) {
@@ -374,23 +481,19 @@ function assignTarget(node: ts.Expression, ctx: LowerContext): { place: string; 
     }
     return { place: local.rustName, ty: local.ty, kind: "local", name: node.text };
   }
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
-    const account = ctx.scope.accounts.get(node.expression.text);
-    if (!account || account.accountKind !== "user" || !account.accountType) {
-      ctx.diag.errorAt(ctx.sf, node, "Only fields of your own accounts can be assigned.");
-      return null;
+  if (ts.isPropertyAccessExpression(node)) {
+    let root: ts.Expression = node;
+    while (ts.isPropertyAccessExpression(root)) root = root.expression;
+    if (ts.isIdentifier(root)) {
+      const account = ctx.scope.accounts.get(root.text);
+      if (account && !account.opts.mut && !account.opts.init && !account.opts.initIfNeeded && !account.opts.realloc) {
+        ctx.diag.errorAt(ctx.sf, node, `Account "${account.name}" is not mutable. Add \`{ mut: true }\`.`);
+        return null;
+      }
     }
-    if (!account.opts.mut && !account.opts.init && !account.opts.initIfNeeded) {
-      ctx.diag.errorAt(ctx.sf, node, `Account "${account.name}" is not mutable. Add \`{ mut: true }\`.`);
-      return null;
-    }
-    const struct = ctx.structs.find((item) => item.name === account.accountType);
-    const field = struct?.fields.find((item) => item.name === node.name.text);
-    if (!field) {
-      ctx.diag.errorAt(ctx.sf, node, `Account ${account.accountType} has no field "${node.name.text}".`);
-      return null;
-    }
-    return { place: `ctx.accounts.${account.rustName}.${field.rustName}`, ty: field.ty, kind: "field", name: node.name.text };
+    const expr = lowerProp(node, ctx);
+    if (!expr) return null;
+    return { place: expr.rust, ty: expr.ty, kind: "field", name: node.name.text };
   }
   ctx.diag.errorAt(ctx.sf, node, "Unsupported assignment target.");
   return null;
@@ -400,10 +503,16 @@ function lowerCallStmt(node: ts.CallExpression, ctx: LowerContext, loc: Loc): St
   const called = callName(node.expression);
   if (called === "require") return lowerRequire(node, ctx, loc);
   if (called === "emit") return lowerEmit(node, ctx, loc);
+  if (called === "emitCpi") return lowerEmit(node, ctx, loc, true);
   if (called === "log") return lowerLog(node, ctx, loc);
   if (called === "system.transfer") return lowerSystemTransfer(node, ctx, loc);
   if (called === "token.transferChecked") return lowerTokenTransfer(node, ctx, loc);
-  if (called === "cpi") return lowerCpi(node, ctx, loc);
+  if (called === "token.createAssociatedAccount") return lowerCreateAta(node, ctx, loc);
+  if (called === "token.mintTo") return lowerMintTo(node, ctx, loc);
+  if (called === "cpi") return [...takePending(ctx), ...lowerCpi(node, ctx, loc)];
+  if (called === "push") return lowerPush(node, ctx, loc);
+  const helper = called && ctx.helpers.get(called);
+  if (helper && !helper.returnType) return lowerHelperCall(node, helper, ctx, loc);
   ctx.diag.errorAt(ctx.sf, node, `Unsupported call "${called ?? node.expression.getText(ctx.sf)}".`);
   return [];
 }
@@ -434,7 +543,7 @@ function lowerRequire(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stm
   return [{ code: `require!(${concrete.rust}, AxolotlError::${name});`, loc }];
 }
 
-function lowerEmit(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] {
+function lowerEmit(node: ts.CallExpression, ctx: LowerContext, loc: Loc, asCpi = false): Stmt[] {
   const typeArg = node.typeArguments?.[0];
   if (!typeArg || !ts.isTypeReferenceNode(typeArg) || node.arguments.length !== 1 || !ts.isObjectLiteralExpression(node.arguments[0]!)) {
     ctx.diag.errorAt(ctx.sf, node, "emit<EventName>({ ...fields }) expected.");
@@ -477,7 +586,9 @@ function lowerEmit(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[]
   for (const field of event.fields) {
     if (!seen.has(field.name)) ctx.diag.errorAt(ctx.sf, obj, `Missing event field "${field.name}".`);
   }
-  return [{ code: `emit!(${event.name} { ${parts.join(", ")} });`, loc }];
+  if (asCpi) ctx.usesEventCpi = true;
+  const macro = asCpi ? "emit_cpi" : "emit";
+  return [{ code: `${macro}!(${event.name} { ${parts.join(", ")} });`, loc }];
 }
 
 function lowerLog(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] {
@@ -587,7 +698,7 @@ function lowerCpi(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] 
   }
   const metas: string[] = [];
   const infos: string[] = [];
-  let pda: AccountParam | null = null;
+  const pdas: AccountParam[] = [];
   for (const element of accountsProp.elements) {
     if (!ts.isObjectLiteralExpression(element)) {
       ctx.diag.errorAt(ctx.sf, element, "Each CPI account is `{ account, mut?, signer? }`.");
@@ -603,8 +714,7 @@ function lowerCpi(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] 
     const mut = boolProp(element, "mut");
     const signer = boolProp(element, "signer");
     if (signer && account.opts.seeds.length > 0) {
-      if (pda) ctx.diag.errorAt(ctx.sf, element, "Only one PDA signer is supported per cpi().");
-      pda = account;
+      pdas.push(account);
     }
     const isSigner = signer || account.accountKind === "signer";
     const ctor = mut ? "new" : "new_readonly";
@@ -615,24 +725,54 @@ function lowerCpi(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] 
   if (explicitSigner) {
     const account = ctx.scope.accounts.get(explicitSigner);
     if (!account || account.opts.seeds.length === 0) ctx.diag.errorAt(ctx.sf, obj, "cpi signer must be a PDA account with seeds.");
-    else pda = account;
+    else if (!pdas.includes(account)) pdas.push(account);
   }
   const argExprs: Expr[] = [];
   for (const arg of argsProp.elements) {
     const expr = lowerExpr(arg, ctx);
-    if (!expr || expr.adaptable) {
-      ctx.diag.errorAt(ctx.sf, arg, "CPI arguments need a known type. Use a typed local, account field, or instruction argument.");
+    if (!expr || expr.adaptable || typeof expr.ty !== "string") {
+      ctx.diag.errorAt(ctx.sf, arg, "CPI arguments need a known scalar type. Use a typed local, account field, or instruction argument.");
       continue;
     }
     argExprs.push(expr);
   }
   const discBytes = discriminator("global", snake(nameProp.text)).map((byte) => `${byte}u8`).join(", ");
   const pushes = argExprs.map((expr) => `ax_codec::push_${expr.ty}(&mut __ax_data, ${refOf(expr)});`);
-  const seeds = pda ? pdaSeeds(pda, ctx) : null;
-  const invoke = seeds ? "invoke_signed" : "invoke";
-  const seedArg = seeds ? `, &[${seeds.name}]` : "";
+  const seeds = pdas.map((account) => pdaSeeds(account, ctx)).filter((item): item is { name: string; prelude: Stmt[] } => item !== null);
+  const invoke = seeds.length > 0 ? "invoke_signed" : "invoke";
+  const seedArg = seeds.length > 0 ? `, &[${seeds.map((item) => item.name).join(", ")}]` : "";
+  const prelude = seeds.flatMap((item) => item.prelude);
+  const invokeStmts: Stmt[] = [
+    ...prelude,
+    { code: `let mut __ax_data = Vec::new();`, loc },
+    { code: `__ax_data.extend_from_slice(&[${discBytes}]);`, loc },
+    ...pushes.map((code) => ({ code, loc })),
+    {
+      code: `let __ax_ix = anchor_lang::solana_program::instruction::Instruction { program_id: ctx.accounts.${program.rustName}.key(), accounts: vec![${metas.join(", ")}], data: __ax_data };`,
+      loc,
+    },
+    {
+      code: `anchor_lang::solana_program::program::${invoke}(&__ax_ix, &[${infos.join(", ")}]${seedArg})?;`,
+      loc,
+    },
+  ];
+  const readBack = node.typeArguments?.[0];
+  if (readBack) {
+    const scalar = annotatedScalar(ctx, readBack);
+    if (!scalar) {
+      ctx.diag.errorAt(ctx.sf, readBack, "cpi return data must be a scalar type.");
+      return [];
+    }
+    const slot = fresh(ctx);
+    ctx.pending.push(...invokeStmts, {
+      code: `let ${slot} = anchor_lang::solana_program::program::get_return_data().map(|(_key, data)| data).unwrap_or_default();`,
+      loc,
+    });
+    ctx.cpiRead = { rust: `ax_codec::read_${scalar}(&${slot})`, ty: scalar };
+    return [];
+  }
   return [
-    ...(seeds?.prelude ?? []),
+    ...prelude,
     { code: `let mut __ax_data = Vec::new();`, loc },
     { code: `__ax_data.extend_from_slice(&[${discBytes}]);`, loc },
     ...pushes.map((code) => ({ code, loc })),
@@ -804,18 +944,92 @@ function lowerIdent(node: ts.Identifier, ctx: LowerContext): Expr | null {
   return null;
 }
 
+function asValue(ty: FieldTy): ValueTy {
+  if (typeof ty === "string") return ty;
+  if (ty.kind === "struct") return { struct: ty.name };
+  if (ty.kind === "enum") return { enum: ty.name };
+  if (ty.kind === "vec") return { vec: ty.inner };
+  return "string";
+}
+
 function lowerProp(node: ts.PropertyAccessExpression, ctx: LowerContext): Expr | null {
   if (!ts.isIdentifier(node.expression)) {
-    ctx.diag.errorAt(ctx.sf, node, "Only a single field access is supported.");
-    return null;
+    const base = lowerExpr(node.expression, ctx);
+    if (!base || typeof base.ty === "string" || !("struct" in base.ty)) {
+      ctx.diag.errorAt(ctx.sf, node, "Only fields of accounts and nested structs can be read.");
+      return null;
+    }
+    const struct = ctx.structs.find((item) => item.name === base.ty.struct);
+    const field = struct?.fields.find((item) => item.name === node.name.text);
+    if (!struct || !field) {
+      ctx.diag.errorAt(ctx.sf, node, `No field "${node.name.text}" on this value.`);
+      return null;
+    }
+    return { rust: `${base.rust}.${field.rustName}`, ty: asValue(field.ty) };
+  }
+  const variants = ctx.enums.get(node.expression.text);
+  if (variants) {
+    const variant = variants.find((item) => item.name === node.name.text);
+    if (!variant) {
+      ctx.diag.errorAt(ctx.sf, node, `${node.expression.text} has no variant "${node.name.text}".`);
+      return null;
+    }
+    return { rust: `${node.expression.text}::${variant.rustName}`, ty: { enum: node.expression.text } };
   }
   const account = ctx.scope.accounts.get(node.expression.text);
   if (!account) {
-    ctx.diag.errorAt(ctx.sf, node, `Unknown account "${node.expression.text}".`);
+    ctx.diag.errorAt(ctx.sf, node, `Unknown name "${node.expression.text}".`);
     return null;
   }
-  const field = node.name.text;
-  if (field === "key") return { rust: `ctx.accounts.${account.rustName}.key()`, ty: "pubkey" };
+  return accountField(account, node.name.text, ctx, node);
+}
+
+function accountRoot(account: AccountParam, ctx: LowerContext): string {
+  const struct = ctx.structs.find((item) => item.name === account.accountType);
+  if (struct?.zeroCopy) {
+    // load_mut rejects an account whose discriminator has not been written yet.
+    const load = account.opts.init ? "load_init" : account.opts.mut || account.opts.initIfNeeded ? "load_mut" : "load";
+    return `(*ctx.accounts.${account.rustName}.${load}()?)`;
+  }
+  if (account.opts.optional) {
+    const method = account.opts.mut || account.opts.init || account.opts.initIfNeeded ? "as_mut" : "as_ref";
+    return `ctx.accounts.${account.rustName}.${method}().unwrap()`;
+  }
+  return `ctx.accounts.${account.rustName}`;
+}
+
+function accountField(account: AccountParam, field: string, ctx: LowerContext, node: ts.Node): Expr | null {
+  if (field === "key" && account.accountKind !== "remaining") {
+    return { rust: `ctx.accounts.${account.rustName}.key()`, ty: "pubkey" };
+  }
+  if (account.accountKind === "remaining" && field === "count") {
+    return { rust: "(ctx.remaining_accounts.len() as u64)", ty: "u64" };
+  }
+  if (account.accountKind === "instructions" && field === "index") {
+    const info = `ctx.accounts.${account.rustName}.to_account_info()`;
+    return {
+      rust: `{ let __ax_info = ${info}; let __ax_data = __ax_info.try_borrow_data()?; let __ax_len = __ax_data.len(); u16::from_le_bytes([__ax_data[__ax_len - 2], __ax_data[__ax_len - 1]]) }`,
+      ty: "u16",
+    };
+  }
+  if ((account.accountKind === "slotHashes" || account.accountKind === "stakeHistory") && field === "bytes") {
+    return { rust: `(ctx.accounts.${account.rustName}.to_account_info().data_len() as u64)`, ty: "u64" };
+  }
+  if (account.accountKind === "epochSchedule") {
+    const names: Record<string, { rust: string; ty: Scalar }> = {
+      slotsPerEpoch: { rust: "slots_per_epoch", ty: "u64" },
+      leaderScheduleSlotOffset: { rust: "leader_schedule_slot_offset", ty: "u64" },
+      warmup: { rust: "warmup", ty: "bool" },
+      firstNormalEpoch: { rust: "first_normal_epoch", ty: "u64" },
+      firstNormalSlot: { rust: "first_normal_slot", ty: "u64" },
+    };
+    const found = names[field];
+    if (!found) {
+      ctx.diag.errorAt(ctx.sf, node, `EpochSchedule has no field "${field}".`);
+      return null;
+    }
+    return { rust: `ctx.accounts.${account.rustName}.${found.rust}`, ty: found.ty };
+  }
   if (account.accountKind === "user" && account.accountType) {
     const struct = ctx.structs.find((item) => item.name === account.accountType);
     const found = struct?.fields.find((item) => item.name === field);
@@ -823,7 +1037,7 @@ function lowerProp(node: ts.PropertyAccessExpression, ctx: LowerContext): Expr |
       ctx.diag.errorAt(ctx.sf, node, `${account.accountType} has no field "${field}".`);
       return null;
     }
-    return { rust: `ctx.accounts.${account.rustName}.${found.rustName}`, ty: found.ty };
+    return { rust: `${accountRoot(account, ctx)}.${found.rustName}`, ty: asValue(found.ty) };
   }
   const builtin = builtinField(account, field);
   if (!builtin) {
@@ -872,7 +1086,7 @@ function lowerUnary(node: ts.PrefixUnaryExpression, ctx: LowerContext, expected?
       }
       return { rust: rustLiteral(value, ty), ty, adaptable: expected ? undefined : { kind: "int", value } };
     }
-    if (!isInteger(inner.ty) || !inner.ty.startsWith("i")) {
+    if (typeof inner.ty !== "string" || !isInteger(inner.ty) || !inner.ty.startsWith("i")) {
       ctx.diag.errorAt(ctx.sf, node, "Unary minus is only supported on signed integers.");
       return null;
     }
@@ -953,8 +1167,8 @@ function pairExprs(leftNode: ts.Expression, rightNode: ts.Expression, ctx: Lower
     if (!a || !b) return null;
     return { left: a, right: b };
   }
-  if (left.ty !== right.ty) {
-    ctx.diag.errorAt(ctx.sf, rightNode, `Type mismatch: ${left.ty} and ${right.ty}.`);
+  if (!sameTy(left.ty, right.ty)) {
+    ctx.diag.errorAt(ctx.sf, rightNode, "Type mismatch.");
     return null;
   }
   return { left, right };
@@ -967,6 +1181,43 @@ function expectBool(node: ts.Expression, ctx: LowerContext): Expr | null {
 }
 
 function lowerCallExpr(node: ts.CallExpression, ctx: LowerContext, _expected?: Scalar): Expr | null {
+  const called = callName(node.expression);
+  if (called === "present" && node.arguments.length === 1 && ts.isIdentifier(node.arguments[0]!)) {
+    const account = ctx.scope.accounts.get(node.arguments[0].text);
+    if (!account?.opts.optional) {
+      ctx.diag.errorAt(ctx.sf, node, "present() takes an optional account.");
+      return null;
+    }
+    return { rust: `ctx.accounts.${account.rustName}.is_some()`, ty: "bool" };
+  }
+  if (called === "cpiReturn") {
+    lowerCpi(node, ctx, locOf(ctx.sf, node));
+    const read = ctx.cpiRead;
+    ctx.cpiRead = undefined;
+    if (!read) ctx.diag.errorAt(ctx.sf, node, "cpiReturn<T>(...) needs a scalar type argument.");
+    return read ?? null;
+  }
+  if (called === "token.transferFeeBasisPoints") {
+    const mint = node.arguments[0] && ts.isIdentifier(node.arguments[0]) ? ctx.scope.accounts.get(node.arguments[0].text) : undefined;
+    if (!mint) {
+      ctx.diag.errorAt(ctx.sf, node, "token.transferFeeBasisPoints(mint) expected.");
+      return null;
+    }
+    return {
+      rust: `ax_codec::transfer_fee_bps(&ctx.accounts.${mint.rustName}.to_account_info())?`,
+      ty: "u16",
+    };
+  }
+  if (called && ctx.helpers.has(called)) {
+    const helper = ctx.helpers.get(called)!;
+    if (!helper.returnType) {
+      ctx.diag.errorAt(ctx.sf, node, `Helper "${called}" does not return a value.`);
+      return null;
+    }
+    const args = helperArgs(node, helper, ctx);
+    if (!args) return null;
+    return { rust: `${helper.rustName}(${args})?`, ty: helper.returnType };
+  }
   if (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.name.text === "minimumBalance") {
     const account = ctx.scope.accounts.get(node.expression.expression.text);
     if (account?.accountKind !== "rent" || node.arguments.length !== 1) {
@@ -981,6 +1232,104 @@ function lowerCallExpr(node: ts.CallExpression, ctx: LowerContext, _expected?: S
   }
   ctx.diag.errorAt(ctx.sf, node, "This call cannot be used as a value.");
   return null;
+}
+
+function sameTy(left: ValueTy, right: ValueTy): boolean {
+  if (typeof left === "string" || typeof right === "string") return left === right;
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function helperArgs(node: ts.CallExpression, helper: HelperModel, ctx: LowerContext): string | null {
+  if (node.arguments.length !== helper.params.length) {
+    ctx.diag.errorAt(ctx.sf, node, `${helper.name} expects ${helper.params.length} arguments.`);
+    return null;
+  }
+  const parts: string[] = [];
+  for (let i = 0; i < helper.params.length; i++) {
+    const param = helper.params[i]!;
+    const expr = lowerExpr(node.arguments[i]!, ctx, param.ty);
+    if (!expr) return null;
+    const concrete = adapt(expr, param.ty, ctx, node.arguments[i]!);
+    if (!concrete) return null;
+    parts.push(concrete.rust);
+  }
+  return parts.join(", ");
+}
+
+function lowerHelperCall(node: ts.CallExpression, helper: HelperModel, ctx: LowerContext, loc: Loc): Stmt[] {
+  const args = helperArgs(node, helper, ctx);
+  if (!args) return [];
+  return [...takePending(ctx), { code: `${helper.rustName}(${args})?;`, loc }];
+}
+
+function lowerPush(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] {
+  if (node.arguments.length !== 2) {
+    ctx.diag.errorAt(ctx.sf, node, "push(vecField, value) expected.");
+    return [];
+  }
+  const target = lowerExpr(node.arguments[0]!, ctx);
+  if (!target || typeof target.ty === "string" || !("vec" in target.ty)) {
+    ctx.diag.errorAt(ctx.sf, node.arguments[0]!, "push() requires a Vec field.");
+    return [];
+  }
+  const value = lowerExpr(node.arguments[1]!, ctx, target.ty.vec);
+  if (!value) return [];
+  const concrete = adapt(value, target.ty.vec, ctx, node.arguments[1]!);
+  if (!concrete) return [];
+  return [...takePending(ctx), { code: `${target.rust}.push(${concrete.rust});`, loc }];
+}
+
+function lowerCreateAta(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] {
+  const obj = objectArg(node, ctx);
+  if (!obj) return [];
+  const payer = identProp(obj, "payer", ctx);
+  const account = identProp(obj, "account", ctx);
+  const owner = identProp(obj, "owner", ctx);
+  const mint = identProp(obj, "mint", ctx);
+  if (!payer || !account || !owner || !mint) {
+    ctx.diag.errorAt(ctx.sf, node, "token.createAssociatedAccount({ payer, account, owner, mint }) expected.");
+    return [];
+  }
+  const system = [...ctx.scope.accounts.values()].find((item) => item.accountKind === "system");
+  const tokenProgram = [...ctx.scope.accounts.values()].find((item) => item.accountKind === "tokenProgram" || item.accountKind === "token2022");
+  const associated = [...ctx.scope.accounts.values()].find((item) => item.accountKind === "associatedToken");
+  if (!system || !tokenProgram || !associated) {
+    ctx.diag.errorAt(ctx.sf, node, "Creating an associated token account requires SystemProgram, TokenProgram, and AssociatedTokenProgram.");
+    return [];
+  }
+  return [{
+    code: `anchor_spl::associated_token::create(CpiContext::new(anchor_spl::associated_token::ID, anchor_spl::associated_token::Create { payer: ctx.accounts.${snake(payer)}.to_account_info(), associated_token: ctx.accounts.${snake(account)}.to_account_info(), authority: ctx.accounts.${snake(owner)}.to_account_info(), mint: ctx.accounts.${snake(mint)}.to_account_info(), system_program: ctx.accounts.${system.rustName}.to_account_info(), token_program: ctx.accounts.${tokenProgram.rustName}.to_account_info() }))?;`,
+    loc,
+  }];
+}
+
+function lowerMintTo(node: ts.CallExpression, ctx: LowerContext, loc: Loc): Stmt[] {
+  const obj = objectArg(node, ctx);
+  if (!obj) return [];
+  const mint = identProp(obj, "mint", ctx);
+  const to = identProp(obj, "to", ctx);
+  const authority = identProp(obj, "authority", ctx);
+  const amountNode = prop(obj, "amount");
+  if (!mint || !to || !authority || !amountNode) {
+    ctx.diag.errorAt(ctx.sf, node, "token.mintTo({ mint, to, authority, amount }) expected.");
+    return [];
+  }
+  const tokenProgram = [...ctx.scope.accounts.values()].find((item) => item.accountKind === "token2022" || item.accountKind === "tokenProgram");
+  if (!tokenProgram) {
+    ctx.diag.errorAt(ctx.sf, node, "token.mintTo requires a token program account.");
+    return [];
+  }
+  const amount = lowerExpr(amountNode, ctx, "u64");
+  if (!amount) return [];
+  const concrete = adapt(amount, "u64", ctx, amountNode);
+  if (!concrete) return [];
+  const authorityAcc = ctx.scope.accounts.get(authority);
+  const seeds = authorityAcc ? pdaSeeds(authorityAcc, ctx) : null;
+  const accounts = `anchor_spl::token_2022::MintTo { mint: ctx.accounts.${snake(mint)}.to_account_info(), to: ctx.accounts.${snake(to)}.to_account_info(), authority: ctx.accounts.${snake(authority)}.to_account_info() }`;
+  const cpi = seeds
+    ? `CpiContext::new_with_signer(ctx.accounts.${tokenProgram.rustName}.key(), ${accounts}, &[${seeds.name}])`
+    : `CpiContext::new(ctx.accounts.${tokenProgram.rustName}.key(), ${accounts})`;
+  return [...(seeds?.prelude ?? []), { code: `anchor_spl::token_2022::mint_to(${cpi}, ${concrete.rust})?;`, loc }];
 }
 
 function adapt(expr: Expr, target: Scalar, ctx: LowerContext, node: ts.Node): Expr | null {

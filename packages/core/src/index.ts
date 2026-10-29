@@ -44,6 +44,8 @@ export interface AccountOptions {
   bump?: boolean;
   hasOne?: readonly string[];
   close?: string;
+  optional?: boolean;
+  realloc?: number;
 }
 
 /** A program-owned account of type `T`, with optional Anchor constraints. */
@@ -62,6 +64,15 @@ export interface SystemProgram {
 
 /** SPL Token or Token-2022 program (Anchor `TokenInterface`). */
 export interface TokenProgram {
+  readonly key: Pubkey;
+}
+
+/**
+ * Associated Token Account program. Pass it on any instruction that calls
+ * `token.createAssociatedAccount`. LiteSVM and Agave only load it for CPI when
+ * the program account is part of the transaction.
+ */
+export interface AssociatedTokenProgram {
   readonly key: Pubkey;
 }
 
@@ -109,6 +120,54 @@ export interface Event {
   readonly __axolotlEvent?: true;
 }
 
+/** Marker for `#[account(zero_copy)]` accounts loaded with AccountLoader. */
+export interface ZeroCopy {
+  readonly __axolotlZeroCopy?: true;
+}
+
+/** Accounts that follow the fixed list. Read `count`. */
+export interface RemainingAccounts {
+  readonly count: u64;
+}
+
+export interface Instructions {
+  readonly index: u16;
+}
+
+export interface EpochSchedule {
+  readonly slotsPerEpoch: u64;
+  readonly leaderScheduleSlotOffset: u64;
+  readonly warmup: boolean;
+  readonly firstNormalEpoch: u64;
+  readonly firstNormalSlot: u64;
+}
+
+export interface SlotHashes {
+  readonly bytes: u64;
+}
+
+export interface StakeHistory {
+  readonly bytes: u64;
+}
+
+/** A vector stored in an account, with a maximum length used for rent. */
+export type Vec<T, _Max extends number> = readonly T[];
+
+/** A string stored in an account, with space reserved for at most N bytes. */
+export type Str<_Max extends number> = string;
+
+export interface Token2022Program {
+  readonly key: Pubkey;
+}
+
+export function present(_account: Account<unknown, { optional: true }>): boolean {
+  unavailable("present");
+}
+
+export function push<T>(_vec: Vec<T, number>, _value: T): void {
+  unavailable("push");
+}
+
 function unavailable(name: string): never {
   throw new Error(
     `${name}() is an Axolotl compiler intrinsic. It is lowered to Rust and cannot run in JavaScript.`,
@@ -123,6 +182,22 @@ export function require(condition: boolean, message: string): asserts condition 
 /** Emit an Anchor event. The type argument selects the event interface. */
 export function emit<T extends Event>(_event: T): void {
   unavailable("emit");
+}
+
+/** Emit an event through the event CPI instruction. The instruction must pass the event authority PDA. */
+export function emitCpi<T extends Event>(_event: T): void {
+  unavailable("emitCpi");
+}
+
+/** Invoke another program and decode its return data. */
+export function cpiReturn<T>(_args: {
+  program: Program;
+  name: string;
+  accounts: readonly CpiAccount[];
+  args: readonly (u64 | u32 | u16 | u8 | i64 | boolean | string | Pubkey | bytes32 | bigint | number)[];
+  signer?: Account<unknown> | Signer;
+}): T {
+  unavailable("cpiReturn");
 }
 
 /** Write a message to the program log. */
@@ -146,9 +221,26 @@ export const token: {
     authority: Signer | Account<unknown>;
     amount: u64;
   }): void;
+  createAssociatedAccount(args: {
+    payer: Signer;
+    account: UncheckedAccount;
+    owner: Signer | Account<unknown>;
+    mint: Mint;
+  }): void;
+  mintTo(args: { mint: Mint; to: TokenAccount; authority: Signer | Account<unknown>; amount: u64 }): void;
+  transferFeeBasisPoints(mint: Mint): u16;
 } = {
   transferChecked() {
     unavailable("token.transferChecked");
+  },
+  createAssociatedAccount() {
+    unavailable("token.createAssociatedAccount");
+  },
+  mintTo() {
+    unavailable("token.mintTo");
+  },
+  transferFeeBasisPoints() {
+    unavailable("token.transferFeeBasisPoints");
   },
 };
 

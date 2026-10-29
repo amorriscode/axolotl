@@ -11,19 +11,34 @@ export const SCALAR_SIZE: Record<Exclude<Scalar, "string">, number> = {
   bool: 1, pubkey: 32, bytes32: 32,
 };
 
+export type FieldTy =
+  | Scalar
+  | { kind: "struct"; name: string }
+  | { kind: "vec"; inner: Scalar; max: number }
+  | { kind: "enum"; name: string }
+  | { kind: "str"; max: number };
+
 export interface FieldModel {
   name: string;
   rustName: string;
-  ty: Scalar;
+  ty: FieldTy;
   loc: Loc;
 }
 
 export interface StructModel {
   name: string;
-  kind: "account" | "event";
+  /** `struct` is embedded data. `account` is a program account. */
+  kind: "account" | "event" | "struct";
+  zeroCopy: boolean;
   fields: FieldModel[];
   loc: Loc;
   file: string;
+}
+
+export interface EnumModel {
+  name: string;
+  variants: { name: string; rustName: string }[];
+  loc: Loc;
 }
 
 export type SeedModel =
@@ -40,11 +55,15 @@ export interface AccountOpts {
   bump: boolean;
   hasOne: string[];
   close?: string;
+  optional: boolean;
+  /** Reallocate the account to this many bytes. */
+  realloc?: number;
 }
 
 export type AccountKind =
-  | "user" | "signer" | "system" | "tokenProgram" | "tokenAccount" | "mint"
-  | "unchecked" | "systemAccount" | "clock" | "rent" | "program";
+  | "user" | "signer" | "system" | "tokenProgram" | "token2022" | "associatedToken" | "tokenAccount" | "mint"
+  | "unchecked" | "systemAccount" | "clock" | "rent" | "program" | "remaining"
+  | "instructions" | "epochSchedule" | "slotHashes" | "stakeHistory";
 
 export interface AccountParam {
   kind: "account";
@@ -78,8 +97,19 @@ export interface InstructionModel {
   loc: Loc;
   file: string;
   body: Stmt[];
+  returnType?: Scalar;
+  usesEventCpi: boolean;
   /** Set when the body could not be lowered. */
   failed: boolean;
+}
+
+export interface HelperModel {
+  name: string;
+  rustName: string;
+  params: { name: string; rustName: string; ty: Scalar }[];
+  returnType?: Scalar;
+  body: Stmt[];
+  loc: Loc;
 }
 
 export interface ErrorModel {
@@ -94,6 +124,8 @@ export interface ProgramModel {
   version: string;
   description: string;
   structs: StructModel[];
+  enums: EnumModel[];
+  helpers: HelperModel[];
   instructions: InstructionModel[];
   errors: ErrorModel[];
   usesSpl: boolean;
@@ -101,6 +133,7 @@ export interface ProgramModel {
   usesArithmetic: boolean;
   usesCpi: boolean;
   usesRawCpi: boolean;
+  usesEventCpi: boolean;
 }
 
 export interface SourceMap {
@@ -118,7 +151,12 @@ export interface Idl {
   metadata: { name: string; version: string; spec: string; description: string };
   instructions: IdlInstruction[];
   accounts: { name: string; discriminator: number[] }[];
-  types: { name: string; type: { kind: "struct"; fields: { name: string; type: IdlType | string }[] } }[];
+  types: {
+    name: string;
+    type:
+      | { kind: "struct"; fields: { name: string; type: IdlType | string | { vec: string } | { defined: { name: string } } }[] }
+      | { kind: "enum"; variants: { name: string }[] };
+  }[];
   events: { name: string; discriminator: number[] }[];
   errors: { code: number; name: string; msg: string }[];
 }
@@ -135,6 +173,7 @@ export interface IdlAccount {
   writable?: boolean;
   signer?: boolean;
   address?: string;
+  optional?: boolean;
   relations?: string[];
   pda?: {
     seeds: (

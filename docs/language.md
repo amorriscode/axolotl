@@ -43,7 +43,9 @@ Account options are a type literal so both `tsc` and Axolotl can see them:
 | `hasOne: ["authority"]` | Field `authority` must equal that account's key |
 | `close: "authority"` | At the end of the instruction, lamports go to this account |
 
-Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `TokenAccount`, `Mint`, `UncheckedAccount`, `SystemAccount`, `Clock`, `Rent`, `Program`.
+Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `Token2022Program`, `TokenAccount`, `Mint`, `UncheckedAccount`, `SystemAccount`, `Clock`, `Rent`, `EpochSchedule`, `Instructions`, `SlotHashes`, `StakeHistory`, `Program`, `RemainingAccounts`.
+
+`optional: true` makes an account `Option`. Pass the program id when it is absent, and test it with `present(account)`. `realloc: N` grows the account; the payer is the same `payer` option. `ZeroCopy` accounts are Anchor `AccountLoader`s. `Vec<T, N>` and `Str<N>` are dynamically sized up to `N`. Unit enums are one byte.
 
 `TokenAccount` and `Mint` may be wrapped in `Account<TokenAccount, { mut: true }>`. `TokenProgram` accepts the SPL Token interface, so a client can pass the classic token program.
 
@@ -63,7 +65,7 @@ Instruction arguments and account fields use these types:
 | `Pubkey` | `Pubkey` | |
 | `bytes32` | `[u8; 32]` | assign a string of at most 32 bytes |
 
-Account fields cannot be `string`. Strings are dynamically sized. Use `bytes32` or pass the string as an argument.
+Account fields cannot be an unbounded `string`. Use `Str<N>`, `bytes32`, or pass the string as an argument. `u128` and `i128` are account fields and arguments.
 
 Integer arithmetic uses checked math and returns `ArithmeticOverflow` instead of wrapping. Comparisons are `===`, `!==`, `<`, `<=`, `>`, `>=`.
 
@@ -81,7 +83,9 @@ for (let i: u64 = 0n; i < times; i = i + 1n) {
 }
 ```
 
-`if` bodies are blocks. The only loop is `for (let i: T = start; i < bound; i = i + 1n)`. There is no `while`, `break`, or `continue`. `return;` exits the instruction. Helper functions are not supported.
+`if` bodies are blocks. `while` conditions are expressions. `break` and `continue` apply to the innermost loop. The `for` form is still only `for (let i: T = start; i < bound; i = i + 1n)`. `return;` exits an instruction that returns nothing. `return expr;` is allowed when the function's return type is a scalar.
+
+A non-exported function with scalar parameters and an optional scalar return type is a helper. Helpers are emitted outside `#[program]` so Anchor does not turn them into instructions.
 
 ## Checks, logs, and events
 
@@ -124,8 +128,10 @@ cpi({
 
 `name` is the callee's TypeScript function name. Axolotl snake-cases it the same way it names the generated Rust function, then uses Anchor's `sha256("global:" + name)[..8]` discriminator.
 
-`Clock` exposes `unixTimestamp`, `slot`, and `epoch`. `Rent` exposes `minimumBalance(space)`.
+`Clock` exposes `unixTimestamp`, `slot`, and `epoch`. `Rent` exposes `minimumBalance(space)`. `EpochSchedule` exposes `slotsPerEpoch`, `leaderScheduleSlotOffset`, `warmup`, `firstNormalEpoch`, and `firstNormalSlot`. `Instructions` exposes `index`. `SlotHashes` and `StakeHistory` expose `bytes`, the account length.
+
+`token.createAssociatedAccount` creates an associated token account. The instruction must also take `AssociatedTokenProgram`, because the runtime only loads that program for CPI when its account is in the transaction. `token.mintTo` mints through the token interface. `token.transferFeeBasisPoints(mint)` reads a Token-2022 transfer-fee config. `cpiReturn<T>` reads the callee's return data. `emitCpi` writes an Anchor self-CPI event. Clients decode that event from the inner instruction (`decodeEventInstructions`), not from `Program data:` logs.
 
 ## What is rejected
 
-Imports other than `@axolotl-sol/core` and relative files, classes, `async`, destructuring, template strings, `while`, arbitrary calls, and account fields Axolotl cannot size. The diagnostic points at the TypeScript source line. `axolotl build` also maps `lib.rs` line numbers from a failed `anchor build` back to that source.
+Imports other than `@axolotl-sol/core` and relative files, classes, `async`, destructuring, template strings, `switch` / `match`, arbitrary calls, `Option` and unsized `Vec` instruction arguments, `constraint` / `owner` / `address` expressions, PDAs derived under another program, and account fields Axolotl cannot size. The diagnostic points at the TypeScript source line. `axolotl build` also maps `lib.rs` line numbers from a failed `anchor build` back to that source. Axolotl does not emit sBPF itself.
