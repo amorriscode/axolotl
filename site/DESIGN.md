@@ -6,25 +6,29 @@ The animal is the only saturated object on the page. Everything else is ivory ty
 
 ## What was taken, and from where
 
-Looked at the live sites on 29 October 2026, after two rejected Axolotl designs (a pink gradient with a card grid, then a green-black specimen plate). The notes below are the specific moves that survived that comparison.
+Visited on 29 October 2026, after two rejected Axolotl designs (a pink gradient with a card grid, then a green-black specimen plate). Breakpoint's host did not resolve. godly.website redirected to recent.design.
 
-**[lusion.co](https://lusion.co) and [activetheory.net](https://activetheory.net).** The WebGL object is the page, and the type is set against it at poster scale. The scene leaves when you scroll. Taken: a lazy-loaded Three.js axolotl, fixed on the first screen, fading as the next section covers it. Not taken: a full-viewport shader as decoration with nothing to look at.
+**[lusion.co](https://lusion.co).** A lit 3D subject in the middle of the first screen, type kept small so the object can breathe. Taken: the axolotl is the picture, not a texture behind a headline. Lighting has to read as a body, or it is just a blob.
 
-**[bruno-simon.com](https://bruno-simon.com).** The 3D thing is the subject, not a background. Taken: the creature has anatomy (wide head, external gills, eye, limbs, caudal fin) and it follows the pointer. A flat poster stands in until the first frame, and for browsers without WebGL.
+**[activetheory.net](https://activetheory.net).** A particle field behind a short line of type. Their page also ships a styled "browser not supported" state. Taken: the heavy scene is one chunk, and a drawn poster stays up until the first frame, including when WebGL never arrives.
 
-**[stripe.com](https://stripe.com) sessions posters.** A high-contrast italic display face, set huge, with a grotesque doing the work underneath. Taken: Bodoni Moda for the claim and the conformance fraction. Bricolage Grotesque for the interface. The two never swap jobs.
+**[bruno-simon.com](https://bruno-simon.com).** The 3D scene is the page. Labels are small and sit on the world. Taken: the creature has anatomy (wide head, external gills, an eye, limbs, a caudal fin) and the head follows the pointer. Not taken: making the whole site a game. Learn, the compiler, and the playground have to stay readable.
 
-**[linear.app](https://linear.app).** The product chrome is the illustration. Taken: the playground is an edge-to-edge instrument. TypeScript, Rust, and the IDL are three panes, not tabs. A lamp is the compile state. No feature grid beside it.
+**[vincenzomaiorana.com](https://vincenzomaiorana.com), an Awwwards site of the day.** A real serif, cream ground, almost no graphics, spacing doing the work. Taken: Bodoni Moda for the claim and the fraction only. The grotesque does the interface. Not taken: a light editorial theme. That was the specimen plate, and it was already rejected.
 
-**[rauno.me](https://rauno.me).** Motion is rare and has a job. Taken: the gill mark sways, the account liquid moves when the step changes, the CPI bead travels, the page fades. Nothing else animates. `prefers-reduced-motion` freezes the swim and the fades.
+**[nextjs.org/conf](https://nextjs.org/conf).** One line at a brutal size, neon used once, nothing else in the hero. Taken: the headline is four short lines, not a paragraph, and yellow-green is only the compiled or passing state.
 
-**[solana.com](https://solana.com) and Breakpoint.** A claim, then a number, then a dated list. Taken: home is the animal, one instruction lowered in the page, and `40/47` as type. The scoreboard is a timetable of rows. Status is the word pass, fail, or unsupported, plus a mark.
+**[jup.ag](https://jup.ag).** Black field, one ownable neon, a mascot that is drawn rather than a clip-art animal. Taken: `#dff56a` is the signal, and the animal appears once. A repeated mascot would read as a meme-coin site.
 
-**[jup.ag](https://jup.ag).** The number is in front of the tool. Taken: the fraction is the scoreboard's headline, not a badge on a card.
+**[linear.app](https://linear.app).** Left-aligned claim, and the moving thing is the product UI. Taken: the playground is an edge-to-edge instrument. TypeScript, Rust, and the IDL are three panes. A lamp is the compile state.
 
-**[vercel.com](https://vercel.com) / Next.js conf.** Code is on the first scroll, in the real typeface of the product. Taken: the increment instruction is compiled in the browser, TypeScript beside the Rust this page emitted.
+**[rauno.me](https://rauno.me).** Black, white type, no illustration, a small name. The lesson is restraint in the chrome, not emptiness. Taken: the nav is a word and four links. The gill mark, the account liquid, the CPI bead, and the page fade are the only motion. `prefers-reduced-motion` freezes the swim.
 
-**[phantom.com](https://phantom.com), [backpack.app](https://backpack.app), [helius.dev](https://www.helius.dev), [godly.website](https://godly.website), Awwwards sites of the day.** Used mostly as a refusal list. Logo marquees, persona cards, three-up feature grids, pill buttons, and mesh gradients read as a template even when the type is large. The axolotl is drawn once, as a living animal. It is not a mascot repeated on every card.
+**[solana.com](https://solana.com).** Giant centered wordmark on a purple mesh. That scale is the useful part. The mesh is the part already rejected as a gradient. Taken: type large enough to be the layout. The scoreboard is still a list of rows, with the word pass, fail, or unsupported, not a badge.
+
+**[stripe.com/sessions](https://stripe.com/sessions), [phantom.com](https://phantom.com), [backpack.app](https://backpack.app), [helius.dev](https://www.helius.dev).** White or dark, then a gradient illustration or a floating product card. Helius is the closest to a template: mesh, headline, card. Their gradients are the thing not to borrow. Stripe's live Sessions page is a grotesque on white with abstract color, not a Bodoni poster. The serif here comes from the Maiorana page, not from Stripe.
+
+**[awwwards.com](https://www.awwwards.com/websites/sites_of_the_day/) and [recent.design](https://recent.design).** Grids of other people's work. Useful as a reminder that a card grid is a catalogue, not a product. Guillaume Colombel's loader was a designed 3D wait, which only pays off if the thing being waited for is the point. Here that thing is the animal, and it is lazy-loaded so the rest of the site does not pay for it.
 
 ## Identity
 
