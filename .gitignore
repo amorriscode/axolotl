@@ -10,6 +10,9 @@ conformance/target
 .anchor-target/
 site/dist
 
+# Program secret keys. axolotl init and axolotl build create these locally.
+keys/
+
 # Local toolchains and editor files
 .solana/
 *.log

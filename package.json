@@ -24,6 +24,8 @@
     "node": ">=22.18"
   },
   "devDependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "typescript": "5.9.3"
   }
 }

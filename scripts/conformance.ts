@@ -12,6 +12,7 @@ const files = [
   "examples/cpi/echo/tests/cpi.test.ts",
   "conformance/tests/conformance.test.ts",
   "conformance/tests/extended.test.ts",
+  "conformance/tests/parity.test.ts",
   "packages/compiler/test/idl-match.test.ts",
 ];
 
@@ -64,17 +65,23 @@ const catalog: { test: string; id: string; group: string; feature: string; detai
   { test: "has_one rejects the wrong authority", id: "accounts.has-one", group: "Accounts", feature: "has_one constraint failure", detail: "conformance" },
   { test: "checked addition rejects overflow", id: "math.overflow", group: "Language", feature: "Checked addition overflow", detail: "conformance" },
   { test: "a PDA constraint rejects the wrong address", id: "pda.mismatch", group: "PDAs", feature: "PDA seeds constraint failure", detail: "conformance" },
+  { test: "owner constraint accepts the token program and rejects another owner", id: "accounts.owner", group: "Accounts", feature: "owner constraint", detail: "conformance" },
+  { test: "address constraint pins an account to a public key", id: "accounts.address", group: "Accounts", feature: "address constraint", detail: "conformance" },
+  { test: "constraint expressions see account fields", id: "accounts.constraint", group: "Accounts", feature: "constraint expressions", detail: "conformance" },
+  { test: "seeds::program checks a PDA derived under another program", id: "pda.external", group: "PDAs", feature: "seeds::program", detail: "PDA derived under the echo program." },
+  { test: "Option and unsized Vec instruction arguments round-trip", id: "args.dynamic", group: "Types", feature: "Option and unsized Vec instruction arguments", detail: "conformance" },
+  { test: "switch matches every unit-enum variant", id: "lang.match", group: "Language", feature: "switch on unit enums", detail: "conformance" },
+  { test: "match binds fields of a data-carrying enum", id: "types.enum-data", group: "Types", feature: "Data-carrying enums and match", detail: "Discriminated unions lower to Anchor enums with fields." },
+  { test: "Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards are readable", id: "sysvar.history", group: "Sysvars", feature: "Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards", detail: "Read from the accounts Agave 4.1 still exposes. Values are compared with LiteSVM." },
+  { test: "ed25519 precompile data is checked through the instructions sysvar", id: "crypto.ed25519", group: "Runtime", feature: "ed25519 precompile via the instructions sysvar", detail: "conformance" },
+  { test: "secp256k1 precompile data is checked through the instructions sysvar", id: "crypto.secp256k1", group: "Runtime", feature: "secp256k1 precompile via the instructions sysvar", detail: "conformance" },
+  { test: "executable constraint accepts a program and rejects a data account", id: "accounts.executable", group: "Accounts", feature: "executable constraint", detail: "conformance" },
+  { test: "token mint and authority constraints match the token account", id: "tokens.constraints", group: "Tokens", feature: "token::mint and token::authority", detail: "conformance" },
+  { test: "associated token constraints check the derived address", id: "tokens.associated", group: "Tokens", feature: "associated_token mint and authority", detail: "conformance" },
+  { test: "zero initializes a client-created account", id: "accounts.zero", group: "Accounts", feature: "zero constraint", detail: "The client creates the account. The program writes the discriminator." },
 ];
 
-const unsupported: Row[] = [
-  { id: "backend.sbpf", group: "Compiler", feature: "Direct sBPF / SBF codegen", status: "unsupported", detail: "Axolotl emits Anchor Rust and uses the Agave toolchain. A private syscall backend would track every Agave release." },
-  { id: "constraints.expr", group: "Accounts", feature: "constraint, owner, and address expressions", status: "unsupported", detail: "Account options are mut, init, initIfNeeded, payer, seeds, bump, has_one, close, optional, and realloc." },
-  { id: "pda.external", group: "PDAs", feature: "PDAs derived under another program", status: "unsupported", detail: "Seeds are always derived from the program being compiled. There is no seeds::program." },
-  { id: "args.dynamic", group: "Types", feature: "Option and unsized Vec instruction arguments", status: "unsupported", detail: "Instruction arguments are scalars, Pubkey, bytes32, or string. Account Vec fields have a declared maximum." },
-  { id: "lang.match", group: "Language", feature: "switch / match", status: "unsupported", detail: "Unit enums can be stored and compared. There is no match or switch." },
-  { id: "sysvar.history", group: "Sysvars", feature: "Fees, RecentBlockhashes, and SlotHistory", status: "unsupported", detail: "Clock, Rent, EpochSchedule, Instructions, SlotHashes, and StakeHistory are the exposed sysvars." },
-  { id: "crypto.precompile", group: "Runtime", feature: "ed25519 and secp256k1 precompiles", status: "unsupported", detail: "No instruction for signature precompiles. The instructions sysvar exposes only the current index." },
-];
+const unsupported: Row[] = [];
 
 function parseTap(output: string): Map<string, "pass" | "fail"> {
   const results = new Map<string, "pass" | "fail">();
@@ -133,7 +140,11 @@ CARGO_TARGET_DIR=$PWD/.anchor-target npm run build:programs
 npm run conformance
 \`\`\`
 
-Failing rows are bugs. Unsupported rows are gaps in the TypeScript subset, documented in [docs/language.md](docs/language.md).
+Failing rows are bugs. The table is Anchor's feature surface as Axolotl implements it.
+
+## Not on this scoreboard
+
+Direct sBPF emission is not an Anchor feature, so it is not a row. Anchor compiles Rust; the Agave toolchain emits the sBPF program and the IDL. Axolotl does the same after lowering TypeScript to that Rust. A second backend that called syscalls itself would be a different compiler, and it would have to be rewritten whenever Agave changes the syscall surface. That choice is the architecture in the README, not a missing Solana feature.
 `;
 
 function readFileSyncSafe(): string {

@@ -76,7 +76,7 @@ test("reports source locations for unsupported syntax", () => {
     programId: PROGRAM_ID,
     sources: [{
       filename: "bad.ts",
-      source: `export function initialize(): void {\n  switch (0) { default: {} }\n}\n`,
+      source: `export function initialize(): void {\n  class Foo {}\n}\n`,
     }],
   });
   assert.equal(result.ok, false);

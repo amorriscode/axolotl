@@ -46,6 +46,23 @@ export interface AccountOptions {
   close?: string;
   optional?: boolean;
   realloc?: number;
+  /** Other account's name, or a base58 address. Anchor `owner =`. */
+  owner?: string;
+  /** Other account's name, or a base58 address. Anchor `address =`. */
+  address?: string;
+  /** Boolean expression in account and argument names. Anchor `constraint =`. */
+  constraint?: string;
+  /** Account whose program id is used for `seeds`. Anchor `seeds::program`. */
+  program?: string;
+  executable?: boolean;
+  /** The client already created a zeroed account. Anchor `zero`. */
+  zero?: boolean;
+  /** Anchor `token::mint` / `token::authority`, naming other accounts. */
+  tokenMint?: string;
+  tokenAuthority?: string;
+  /** Anchor `associated_token::mint` / `associated_token::authority`. */
+  associatedMint?: string;
+  associatedAuthority?: string;
 }
 
 /** A program-owned account of type `T`, with optional Anchor constraints. */
@@ -150,8 +167,39 @@ export interface StakeHistory {
   readonly bytes: u64;
 }
 
-/** A vector stored in an account, with a maximum length used for rent. */
-export type Vec<T, _Max extends number> = readonly T[];
+/** Legacy fee calculator. Agave still exposes the account; the value is lamports per signature. */
+export interface Fees {
+  readonly lamportsPerSignature: u64;
+}
+
+/** Deprecated recent-blockhashes sysvar. `bytes` is the account length. */
+export interface RecentBlockhashes {
+  readonly bytes: u64;
+}
+
+/** Slot history bitfield. `bytes` is the account length. */
+export interface SlotHistory {
+  readonly bytes: u64;
+}
+
+/** Slot of the last restart. Zero when the runtime has not restarted. */
+export interface LastRestartSlot {
+  readonly slot: u64;
+}
+
+/** Epoch rewards sysvar. `bytes` is the account length. */
+export interface EpochRewards {
+  readonly bytes: u64;
+}
+
+/**
+ * `Vec<T, N>` is an account field with room for N elements.
+ * `Vec<T>` is an unsized instruction argument.
+ */
+export type Vec<T, _Max extends number = number> = readonly T[];
+
+/** Borsh option. `null` is None. `value ?? fallback` lowers to `unwrap_or`. */
+export type Option<T> = T | null;
 
 /** A string stored in an account, with space reserved for at most N bytes. */
 export type Str<_Max extends number> = string;
@@ -210,6 +258,31 @@ export const system: {
 } = {
   transfer() {
     unavailable("system.transfer");
+  },
+};
+
+/**
+ * Confirm an ed25519 precompile instruction, read from the instructions sysvar.
+ * The precompile has already checked the signature. This checks that instruction
+ * `index` is the ed25519 program and carries this public key and message.
+ */
+export const ed25519: {
+  check(instructions: Instructions, index: u16, publicKey: bytes32, message: string): boolean;
+} = {
+  check() {
+    unavailable("ed25519.check");
+  },
+};
+
+/**
+ * Confirm a secp256k1 precompile instruction. `address` is a 32-byte value
+ * whose first 20 bytes are the Ethereum address.
+ */
+export const secp256k1: {
+  check(instructions: Instructions, index: u16, address: bytes32, message: string): boolean;
+} = {
+  check() {
+    unavailable("secp256k1.check");
   },
 };
 

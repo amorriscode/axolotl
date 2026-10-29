@@ -58,6 +58,11 @@ const SIMPLE_ACCOUNTS: Record<string, AccountKind> = {
   Mint: "mint",
   Token2022Program: "token2022",
   AssociatedTokenProgram: "associatedToken",
+  Fees: "fees",
+  RecentBlockhashes: "recentBlockhashes",
+  SlotHistory: "slotHistory",
+  LastRestartSlot: "lastRestart",
+  EpochRewards: "epochRewards",
   RemainingAccounts: "remaining",
   Instructions: "instructions",
   EpochSchedule: "epochSchedule",
@@ -99,6 +104,9 @@ export function parseSources(
   for (const sf of sources) {
     for (const statement of sf.statements) {
       if (ts.isEnumDeclaration(statement)) enumNames.add(statement.name.text);
+      if (ts.isTypeAliasDeclaration(statement) && statement.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)) {
+        enumNames.add(statement.name.text);
+      }
     }
   }
 
@@ -113,6 +121,13 @@ export function parseSources(
       }
       if (ts.isEnumDeclaration(statement)) {
         const parsed = parseEnum(sf, statement, diag);
+        if (parsed) enums.push(parsed);
+        continue;
+      }
+      if (ts.isTypeAliasDeclaration(statement)) {
+        const exported = statement.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword);
+        if (!exported) continue;
+        const parsed = parseDataEnum(sf, statement, diag, enumNames);
         if (parsed) enums.push(parsed);
         continue;
       }
@@ -134,7 +149,7 @@ export function parseSources(
       if (ts.isFunctionDeclaration(statement)) {
         const exported = statement.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword);
         if (exported) {
-          const parsed = parseFunction(sf, statement, diag);
+          const parsed = parseFunction(sf, statement, diag, enumNames);
           if (parsed) instructions.push(parsed);
         } else {
           const helper = parseHelper(sf, statement, diag);
@@ -189,7 +204,50 @@ function parseEnum(sf: ts.SourceFile, node: ts.EnumDeclaration, diag: Diagnostic
       diag.errorAt(sf, member, "Enums must be unit variants with no explicit values.");
       continue;
     }
-    variants.push({ name: member.name.text, rustName: member.name.text });
+    variants.push({ name: member.name.text, rustName: member.name.text, fields: [] });
+  }
+  return { name: node.name.text, variants, loc: locOf(sf, node) };
+}
+
+function parseDataEnum(sf: ts.SourceFile, node: ts.TypeAliasDeclaration, diag: Diagnostics, enumNames: Set<string>): EnumModel | null {
+  const members = ts.isUnionTypeNode(node.type) ? node.type.types : [node.type];
+  const variants = [];
+  for (const member of members) {
+    if (!ts.isTypeLiteralNode(member)) {
+      diag.errorAt(sf, node, `Type "${node.name.text}" must be a union of \`{ kind: "Name"; ... }\` variants.`);
+      return null;
+    }
+    let kind: string | null = null;
+    const fields: FieldModel[] = [];
+    for (const prop of member.members) {
+      if (!ts.isPropertySignature(prop) || !prop.name || !ts.isIdentifier(prop.name) || !prop.type) {
+        diag.errorAt(sf, prop, "Enum variants are `{ kind: \"Name\"; field: type }`.");
+        return null;
+      }
+      if (prop.name.text === "kind") {
+        kind = readString(prop.type);
+        if (!kind) {
+          diag.errorAt(sf, prop, "kind must be a string literal type.");
+          return null;
+        }
+        continue;
+      }
+      const ty = fieldType(sf, prop.type, diag, false, enumNames);
+      if (!ty || typeof ty !== "string") {
+        diag.errorAt(sf, prop, "Data-enum fields must be scalars.");
+        return null;
+      }
+      fields.push({ name: prop.name.text, rustName: snake(prop.name.text), ty, loc: locOf(sf, prop) });
+    }
+    if (!kind) {
+      diag.errorAt(sf, member, "Each variant needs `kind: \"Name\"`.");
+      return null;
+    }
+    variants.push({ name: kind, rustName: kind, fields });
+  }
+  if (variants.length === 0) {
+    diag.errorAt(sf, node, `Type "${node.name.text}" has no variants.`);
+    return null;
   }
   return { name: node.name.text, variants, loc: locOf(sf, node) };
 }
@@ -325,7 +383,7 @@ function annotatedScalarName(node: ts.TypeNode): Scalar | null {
   return scalarOf(entityName(node.typeName));
 }
 
-function parseFunction(sf: ts.SourceFile, node: ts.FunctionDeclaration, diag: Diagnostics): ParsedInstruction | null {
+function parseFunction(sf: ts.SourceFile, node: ts.FunctionDeclaration, diag: Diagnostics, enumNames: Set<string>): ParsedInstruction | null {
   const exported = node.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword);
   if (!node.name) {
     diag.errorAt(sf, node, "Instruction functions must be named.");
@@ -355,7 +413,7 @@ function parseFunction(sf: ts.SourceFile, node: ts.FunctionDeclaration, diag: Di
       diag.errorAt(sf, param, `Parameter "${param.name.text}" needs a type annotation.`);
       continue;
     }
-    const parsed = parseParam(sf, param.name.text, param.type, diag);
+    const parsed = parseParam(sf, param.name.text, param.type, diag, enumNames);
     if (!parsed) continue;
     if (seen.has(parsed.rustName)) {
       diag.errorAt(sf, param, `"${param.name.text}" collides with another parameter in snake_case.`);
@@ -380,7 +438,7 @@ function parseFunction(sf: ts.SourceFile, node: ts.FunctionDeclaration, diag: Di
   };
 }
 
-function parseParam(sf: ts.SourceFile, name: string, typeNode: ts.TypeNode, diag: Diagnostics): Param | null {
+function parseParam(sf: ts.SourceFile, name: string, typeNode: ts.TypeNode, diag: Diagnostics, enumNames: Set<string>): Param | null {
   const rustName = snake(name);
   if (isRustKeyword(rustName)) {
     diag.errorAt(sf, typeNode, `Parameter "${name}" lowers to the Rust keyword "${rustName}". Rename it.`);
@@ -398,6 +456,27 @@ function parseParam(sf: ts.SourceFile, name: string, typeNode: ts.TypeNode, diag
     if (typeName === "number") {
       diag.errorAt(sf, typeNode, `Parameter "${name}" uses \`number\`. Use u8, u16, u32, u64, i64, or another explicit integer type.`);
       return null;
+    }
+    if (typeName === "Option" && ts.isTypeReferenceNode(typeNode) && typeNode.typeArguments?.length === 1) {
+      const innerName = ts.isTypeReferenceNode(typeNode.typeArguments[0]!) ? entityName(typeNode.typeArguments[0].typeName) : "";
+      const inner = scalarOf(innerName);
+      if (!inner || inner === "string" || inner === "bytes32" || inner === "pubkey") {
+        diag.errorAt(sf, typeNode, "Option<T> instruction arguments use an integer or bool.");
+        return null;
+      }
+      return { kind: "arg", name, rustName, ty: { option: inner }, loc };
+    }
+    if (typeName === "Vec" && ts.isTypeReferenceNode(typeNode) && typeNode.typeArguments?.length === 1) {
+      const innerName = ts.isTypeReferenceNode(typeNode.typeArguments[0]!) ? entityName(typeNode.typeArguments[0].typeName) : "";
+      const inner = scalarOf(innerName);
+      if (!inner || inner === "string") {
+        diag.errorAt(sf, typeNode, "Vec<T> instruction arguments need a scalar element type. Account vectors stay Vec<T, N>.");
+        return null;
+      }
+      return { kind: "arg", name, rustName, ty: { vec: inner }, loc };
+    }
+    if (enumNames.has(typeName)) {
+      return { kind: "arg", name, rustName, ty: { enum: typeName }, loc };
     }
     const scalar = scalarOf(typeName);
     if (scalar) {
@@ -496,6 +575,34 @@ function readOptsNode(sf: ts.SourceFile, node: ts.TypeNode, diag: Diagnostics): 
         if (!ts.isLiteralTypeNode(value) || !ts.isNumericLiteral(value.literal)) {
           diag.errorAt(sf, value, "`realloc` must be a numeric byte length, for example `realloc: 128`.");
         } else opts.realloc = Number(value.literal.text);
+        break;
+      }
+      case "owner":
+      case "address":
+      case "constraint":
+      case "program":
+      case "tokenMint":
+      case "tokenAuthority":
+      case "associatedMint":
+      case "associatedAuthority": {
+        const text = readString(value);
+        if (text === null) diag.errorAt(sf, value, `\`${key}\` must be a string literal type.`);
+        else if (key === "owner") opts.owner = text;
+        else if (key === "address") opts.address = text;
+        else if (key === "constraint") opts.constraint = text;
+        else if (key === "program") opts.seedsProgram = text;
+        else if (key === "tokenMint") opts.tokenMint = text;
+        else if (key === "tokenAuthority") opts.tokenAuthority = text;
+        else if (key === "associatedMint") opts.associatedMint = text;
+        else opts.associatedAuthority = text;
+        break;
+      }
+      case "executable":
+      case "zero": {
+        const flag = readBool(value);
+        if (flag === null) diag.errorAt(sf, value, `\`${key}\` must be \`true\` or \`false\`.`);
+        else if (key === "executable") opts.executable = flag;
+        else opts.zero = flag;
         break;
       }
       default:

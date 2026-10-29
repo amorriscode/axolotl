@@ -42,6 +42,14 @@ Account options are a type literal so both `tsc` and Axolotl can see them:
 | `bump: true` | Canonical bump. A `bump: u8` field is filled in on init |
 | `hasOne: ["authority"]` | Field `authority` must equal that account's key |
 | `close: "authority"` | At the end of the instruction, lamports go to this account |
+| `owner: "tokenProgram"` | Account owner must be that account's key, or a base58 address |
+| `address: "1111..."` | Account address must be that key, or another account's key |
+| `constraint: "counter.count > 0"` | Boolean expression over accounts and arguments. No arithmetic |
+| `program: "echoProgram"` | `seeds::program`. The PDA is derived under that program |
+| `executable: true` | The account must be a program |
+| `zero: true` | The client already created a zeroed account owned by this program |
+| `tokenMint` / `tokenAuthority` | Anchor `token::mint` and `token::authority` |
+| `associatedMint` / `associatedAuthority` | Anchor `associated_token` constraints |
 
 Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `Token2022Program`, `TokenAccount`, `Mint`, `UncheckedAccount`, `SystemAccount`, `Clock`, `Rent`, `EpochSchedule`, `Instructions`, `SlotHashes`, `StakeHistory`, `Program`, `RemainingAccounts`.
 
@@ -134,4 +142,4 @@ cpi({
 
 ## What is rejected
 
-Imports other than `@axolotl-sol/core` and relative files, classes, `async`, destructuring, template strings, `switch` / `match`, arbitrary calls, `Option` and unsized `Vec` instruction arguments, `constraint` / `owner` / `address` expressions, PDAs derived under another program, and account fields Axolotl cannot size. The diagnostic points at the TypeScript source line. `axolotl build` also maps `lib.rs` line numbers from a failed `anchor build` back to that source. Axolotl does not emit sBPF itself.
+Imports other than `@axolotl-sol/core` and relative files, classes, `async`, destructuring, template strings, and arbitrary calls. `switch` covers enums. `Option<T>` and `Vec<T>` are instruction arguments; account vectors stay `Vec<T, N>`. Data-carrying enums are exported unions of `{ kind: "Name"; ... }` objects. The diagnostic points at the TypeScript source line. `axolotl build` also maps `lib.rs` line numbers from a failed `anchor build` back to that source. Axolotl lowers to Anchor Rust and does not emit sBPF itself; that is the compiler backend, not a missing Anchor feature.

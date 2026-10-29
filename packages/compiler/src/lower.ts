@@ -30,7 +30,7 @@ interface Scope {
   locals: Map<string, Local>;
 }
 
-type ValueTy = Scalar | { struct: string } | { enum: string } | { vec: Scalar };
+type ValueTy = Scalar | { struct: string } | { enum: string } | { vec: Scalar } | { option: Scalar };
 
 interface Expr {
   rust: string;
@@ -43,7 +43,7 @@ interface LowerContext {
   sf: ts.SourceFile;
   scope: Scope;
   structs: StructModel[];
-  enums: Map<string, { name: string; rustName: string }[]>;
+  enums: Map<string, { name: string; rustName: string; fields: { name: string; rustName: string; ty: FieldTy }[] }[]>;
   helpers: Map<string, HelperModel>;
   errors: ErrorModel[];
   usesArithmetic: boolean;
@@ -52,6 +52,9 @@ interface LowerContext {
   returnType?: Scalar;
   usesEventCpi: boolean;
   inHelper: boolean;
+  inConstraint: boolean;
+  inMatch: boolean;
+  armFields: Map<string, Expr>;
   cpiRead?: Expr;
 }
 
@@ -102,8 +105,12 @@ export function lowerProgram(
       returnType: instruction.returnType,
       usesEventCpi: false,
       inHelper: false,
+      inConstraint: false,
+      inMatch: false,
+      armFields: new Map(),
     };
     const before = diag.items.length;
+    lowerConstraints(ctx);
     const body = lowerBlock(instruction.body, ctx, true).stmts;
     if (ctx.usesArithmetic) usesArithmetic = true;
     if (body.some((stmt) => stmt.code.includes("invoke") || stmt.code.includes("transfer_checked") || stmt.code.includes("system_program::transfer"))) {
@@ -175,6 +182,9 @@ function helperContext(
     returnType: helper.returnType,
     usesEventCpi: false,
     inHelper: true,
+    inConstraint: false,
+    inMatch: false,
+    armFields: new Map(),
   };
 }
 
@@ -213,6 +223,15 @@ function validateAccounts(instruction: ParsedInstruction, structs: StructModel[]
           diag.error(instruction.file, param.loc.line, param.loc.column, `hasOne = ${rel} requires a Pubkey field named "${rel}" on ${struct.name}.`);
         }
       }
+    }
+    if (opts.seedsProgram && !names.has(opts.seedsProgram)) {
+      diag.error(instruction.file, param.loc.line, param.loc.column, `seeds program "${opts.seedsProgram}" is not an account of this instruction.`);
+    }
+    if (opts.seedsProgram && opts.seeds.length === 0) {
+      diag.error(instruction.file, param.loc.line, param.loc.column, `program = "${opts.seedsProgram}" requires seeds.`);
+    }
+    for (const name of [opts.tokenMint, opts.tokenAuthority, opts.associatedMint, opts.associatedAuthority]) {
+      if (name && !names.has(name)) diag.error(instruction.file, param.loc.line, param.loc.column, `Account "${name}" is not a parameter.`);
     }
     for (const seed of opts.seeds) {
       if (seed.kind === "account" && !names.has(seed.name)) diag.error(instruction.file, param.loc.line, param.loc.column, `Seed account "${seed.name}" is not a parameter.`);
@@ -266,12 +285,13 @@ function lowerStmt(node: ts.Statement, ctx: LowerContext): Stmt[] {
   if (ts.isBlock(node)) return lowerBlock(node, ctx, false).stmts;
   if (ts.isEmptyStatement(node)) return [];
   if (ts.isReturnStatement(node)) return lowerReturn(node, ctx, loc);
-  if (ts.isBreakStatement(node)) return [{ code: "break;", loc }];
+  if (ts.isBreakStatement(node)) return ctx.inMatch ? [] : [{ code: "break;", loc }];
   if (ts.isContinueStatement(node)) return [{ code: "continue;", loc }];
   if (ts.isVariableStatement(node)) return lowerVar(node, ctx, loc);
   if (ts.isIfStatement(node)) return lowerIf(node, ctx, loc);
   if (ts.isWhileStatement(node)) return lowerWhile(node, ctx, loc);
   if (ts.isForStatement(node)) return lowerFor(node, ctx, loc);
+  if (ts.isSwitchStatement(node)) return lowerSwitch(node, ctx, loc);
   if (ts.isExpressionStatement(node)) return lowerExprStmt(node.expression, ctx, loc);
   ctx.diag.errorAt(ctx.sf, node, "Unsupported statement. Use assignments, if/else, while, a restricted for loop, require, emit, log, system.transfer, token.transferChecked, or cpi.");
   return [];
@@ -367,6 +387,125 @@ function lowerIf(node: ts.IfStatement, ctx: LowerContext, loc: Loc): Stmt[] {
     }
   }
   return [{ code: `if ${concrete.rust} {\n${indent(thenStmts)}\n}${elseCode}`, loc }];
+}
+
+function lowerConstraints(ctx: LowerContext): void {
+  for (const account of ctx.scope.accounts.values()) {
+    if (!account.opts.constraint) continue;
+    const rust = lowerConstraint(account.opts.constraint, ctx);
+    if (rust) account.opts.constraintRust = rust;
+  }
+}
+
+function lowerConstraint(source: string, ctx: LowerContext): string | null {
+  const sf = ts.createSourceFile("constraint.ts", `const __ax: boolean = (${source});\n`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const stmt = sf.statements[0];
+  if (!stmt || !ts.isVariableStatement(stmt)) {
+    ctx.diag.error(ctx.sf.fileName, 1, 1, `Could not parse constraint \`${source}\`.`);
+    return null;
+  }
+  const init = stmt.declarationList.declarations[0]?.initializer;
+  if (!init) return null;
+  const savedSf = ctx.sf;
+  const saved = ctx.inConstraint;
+  ctx.sf = sf;
+  ctx.inConstraint = true;
+  const expr = lowerExpr(init, ctx, "bool");
+  const concrete = expr ? adapt(expr, "bool", ctx, init) : null;
+  ctx.sf = savedSf;
+  ctx.inConstraint = saved;
+  if (!concrete || concrete.rust.includes("?")) {
+    ctx.diag.error(savedSf.fileName, 1, 1, "A constraint must be a boolean expression without arithmetic.");
+    return null;
+  }
+  return concrete.rust;
+}
+
+function lowerSwitch(node: ts.SwitchStatement, ctx: LowerContext, loc: Loc): Stmt[] {
+  let enumName = "";
+  let rustScrutinee = "";
+  let dataArg: string | null = null;
+  const scrutinee = node.expression;
+  if (ts.isPropertyAccessExpression(scrutinee) && scrutinee.name.text === "kind" && ts.isIdentifier(scrutinee.expression)) {
+    const arg = ctx.scope.args.get(scrutinee.expression.text);
+    if (arg && typeof arg.ty !== "string" && "enum" in arg.ty) {
+      enumName = arg.ty.enum;
+      rustScrutinee = arg.rustName;
+      dataArg = scrutinee.expression.text;
+    }
+  }
+  if (!enumName) {
+    const expr = lowerExpr(scrutinee, ctx);
+    if (!expr || typeof expr.ty === "string" || !("enum" in expr.ty)) {
+      ctx.diag.errorAt(ctx.sf, scrutinee, "switch must be on an enum or on `value.kind` for a data-carrying enum.");
+      return [];
+    }
+    enumName = expr.ty.enum;
+    rustScrutinee = expr.rust;
+  }
+  const variants = ctx.enums.get(enumName);
+  if (!variants) {
+    ctx.diag.errorAt(ctx.sf, scrutinee, `Unknown enum ${enumName}.`);
+    return [];
+  }
+  const arms: string[] = [];
+  const seen = new Set<string>();
+  let hasDefault = false;
+  for (const clause of node.caseBlock.clauses) {
+    if (ts.isDefaultClause(clause)) {
+      hasDefault = true;
+      const savedMatch = ctx.inMatch;
+      ctx.inMatch = true;
+      const body = lowerCase(clause.statements, ctx);
+      ctx.inMatch = savedMatch;
+      arms.push(`_ => {\n${indent(body)}\n}`);
+      continue;
+    }
+    const label = clause.expression;
+    let variantName = "";
+    if (ts.isStringLiteral(label)) variantName = label.text;
+    else if (ts.isPropertyAccessExpression(label)) variantName = label.name.text;
+    else {
+      ctx.diag.errorAt(ctx.sf, label, "case labels must be Enum.Variant or \"Variant\".");
+      continue;
+    }
+    const variant = variants.find((item) => item.name === variantName);
+    if (!variant) {
+      ctx.diag.errorAt(ctx.sf, label, `${enumName} has no variant "${variantName}".`);
+      continue;
+    }
+    seen.add(variant.name);
+    const saved = new Map(ctx.armFields);
+    const savedMatch = ctx.inMatch;
+    ctx.inMatch = true;
+    if (dataArg) {
+      for (const field of variant.fields) {
+        if (typeof field.ty !== "string") continue;
+        ctx.armFields.set(`${dataArg}.${field.name}`, { rust: field.rustName, ty: field.ty });
+      }
+    }
+    const body = lowerCase(clause.statements, ctx);
+    ctx.armFields = saved;
+    ctx.inMatch = savedMatch;
+    const pattern = variant.fields.length
+      ? `${enumName}::${variant.rustName} { ${variant.fields.map((field) => field.rustName).join(", ")} }`
+      : `${enumName}::${variant.rustName}`;
+    arms.push(`${pattern} => {\n${indent(body)}\n}`);
+  }
+  if (!hasDefault && seen.size !== variants.length) {
+    ctx.diag.errorAt(ctx.sf, node, `switch on ${enumName} must cover every variant or have a default.`);
+    return [];
+  }
+  return [{ code: `match ${rustScrutinee} {\n${indent(arms.map((arm) => ({ code: arm })))}\n}`, loc }];
+}
+
+function lowerCase(statements: ts.NodeArray<ts.Statement>, ctx: LowerContext): Stmt[] {
+  const stmts: Stmt[] = [];
+  for (const statement of statements) {
+    if (ts.isBreakStatement(statement)) continue;
+    stmts.push(...lowerStmt(statement, ctx));
+  }
+  return stmts;
 }
 
 function lowerFor(node: ts.ForStatement, ctx: LowerContext, loc: Loc): Stmt[] {
@@ -486,7 +625,7 @@ function assignTarget(node: ts.Expression, ctx: LowerContext): { place: string; 
     while (ts.isPropertyAccessExpression(root)) root = root.expression;
     if (ts.isIdentifier(root)) {
       const account = ctx.scope.accounts.get(root.text);
-      if (account && !account.opts.mut && !account.opts.init && !account.opts.initIfNeeded && !account.opts.realloc) {
+      if (account && !account.opts.mut && !account.opts.init && !account.opts.initIfNeeded && !account.opts.realloc && !account.opts.zero) {
         ctx.diag.errorAt(ctx.sf, node, `Account "${account.name}" is not mutable. Add \`{ mut: true }\`.`);
         return null;
       }
@@ -953,6 +1092,14 @@ function asValue(ty: FieldTy): ValueTy {
 }
 
 function lowerProp(node: ts.PropertyAccessExpression, ctx: LowerContext): Expr | null {
+  if (ts.isIdentifier(node.expression)) {
+    const bound = ctx.armFields.get(`${node.expression.text}.${node.name.text}`);
+    if (bound) return bound;
+    const arg = ctx.scope.args.get(node.expression.text);
+    if (arg && typeof arg.ty !== "string" && "vec" in arg.ty && node.name.text === "length") {
+      return { rust: `(${arg.rustName}.len() as u64)`, ty: "u64" };
+    }
+  }
   if (!ts.isIdentifier(node.expression)) {
     const base = lowerExpr(node.expression, ctx);
     if (!base || typeof base.ty === "string" || !("struct" in base.ty)) {
@@ -985,6 +1132,7 @@ function lowerProp(node: ts.PropertyAccessExpression, ctx: LowerContext): Expr |
 }
 
 function accountRoot(account: AccountParam, ctx: LowerContext): string {
+  if (ctx.inConstraint) return account.rustName;
   const struct = ctx.structs.find((item) => item.name === account.accountType);
   if (struct?.zeroCopy) {
     // load_mut rejects an account whose discriminator has not been written yet.
@@ -998,9 +1146,24 @@ function accountRoot(account: AccountParam, ctx: LowerContext): string {
   return `ctx.accounts.${account.rustName}`;
 }
 
+function readU64(account: string, offset: number): string {
+  const bytes = Array.from({ length: 8 }, (_, index) => `__ax_data[${offset + index}]`).join(", ");
+  return `{ let __ax_info = ctx.accounts.${account}.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; u64::from_le_bytes([${bytes}]) }`;
+}
+
 function accountField(account: AccountParam, field: string, ctx: LowerContext, node: ts.Node): Expr | null {
   if (field === "key" && account.accountKind !== "remaining") {
-    return { rust: `ctx.accounts.${account.rustName}.key()`, ty: "pubkey" };
+    const prefix = ctx.inConstraint ? account.rustName : `ctx.accounts.${account.rustName}`;
+    return { rust: `${prefix}.key()`, ty: "pubkey" };
+  }
+  if (account.accountKind === "fees" && field === "lamportsPerSignature") {
+    return { rust: readU64(account.rustName, 0), ty: "u64" };
+  }
+  if (account.accountKind === "lastRestart" && field === "slot") {
+    return { rust: readU64(account.rustName, 0), ty: "u64" };
+  }
+  if ((account.accountKind === "recentBlockhashes" || account.accountKind === "slotHistory" || account.accountKind === "epochRewards") && field === "bytes") {
+    return { rust: `(ctx.accounts.${account.rustName}.to_account_info().data_len() as u64)`, ty: "u64" };
   }
   if (account.accountKind === "remaining" && field === "count") {
     return { rust: "(ctx.remaining_accounts.len() as u64)", ty: "u64" };
@@ -1099,6 +1262,18 @@ function lowerUnary(node: ts.PrefixUnaryExpression, ctx: LowerContext, expected?
 
 function lowerBinary(node: ts.BinaryExpression, ctx: LowerContext, expected?: Scalar): Expr | null {
   const op = node.operatorToken.kind;
+  if (op === ts.SyntaxKind.QuestionQuestionToken) {
+    const left = lowerExpr(node.left, ctx);
+    if (!left || typeof left.ty === "string" || !("option" in left.ty)) {
+      ctx.diag.errorAt(ctx.sf, node.left, "`??` is only supported on Option<T>.");
+      return null;
+    }
+    const right = lowerExpr(node.right, ctx, left.ty.option);
+    if (!right) return null;
+    const concrete = adapt(right, left.ty.option, ctx, node.right);
+    if (!concrete) return null;
+    return { rust: `${left.rust}.unwrap_or(${concrete.rust})`, ty: left.ty.option };
+  }
   if (op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.BarBarToken) {
     const left = expectBool(node.left, ctx);
     const right = expectBool(node.right, ctx);
@@ -1182,6 +1357,7 @@ function expectBool(node: ts.Expression, ctx: LowerContext): Expr | null {
 
 function lowerCallExpr(node: ts.CallExpression, ctx: LowerContext, _expected?: Scalar): Expr | null {
   const called = callName(node.expression);
+  if (called === "ed25519.check" || called === "secp256k1.check") return lowerPrecompile(node, ctx, called.startsWith("ed") ? "ed25519" : "secp256k1");
   if (called === "present" && node.arguments.length === 1 && ts.isIdentifier(node.arguments[0]!)) {
     const account = ctx.scope.accounts.get(node.arguments[0].text);
     if (!account?.opts.optional) {
@@ -1232,6 +1408,32 @@ function lowerCallExpr(node: ts.CallExpression, ctx: LowerContext, _expected?: S
   }
   ctx.diag.errorAt(ctx.sf, node, "This call cannot be used as a value.");
   return null;
+}
+
+function lowerPrecompile(node: ts.CallExpression, ctx: LowerContext, kind: "ed25519" | "secp256k1"): Expr | null {
+  const [ixNode, indexNode, keyNode, messageNode] = node.arguments;
+  if (!ixNode || !indexNode || !keyNode || !messageNode || !ts.isIdentifier(ixNode) || !ts.isIdentifier(keyNode) || !ts.isIdentifier(messageNode)) {
+    ctx.diag.errorAt(ctx.sf, node, `${kind}.check(instructions, index, key, message) expected.`);
+    return null;
+  }
+  const ix = ctx.scope.accounts.get(ixNode.text);
+  if (ix?.accountKind !== "instructions") {
+    ctx.diag.errorAt(ctx.sf, ixNode, "The first argument must be the instructions sysvar.");
+    return null;
+  }
+  const index = lowerExpr(indexNode, ctx, "u16");
+  const key = lowerExpr(keyNode, ctx, "bytes32");
+  const message = lowerExpr(messageNode, ctx, "string");
+  if (!index || !key || !message) return null;
+  const indexRust = adapt(index, "u16", ctx, indexNode);
+  const keyRust = adapt(key, "bytes32", ctx, keyNode);
+  const messageRust = adapt(message, "string", ctx, messageNode);
+  if (!indexRust || !keyRust || !messageRust) return null;
+  const fnName = kind === "ed25519" ? "check_ed25519" : "check_secp256k1";
+  return {
+    rust: `ax_codec::${fnName}(&ctx.accounts.${ix.rustName}.to_account_info(), ${indexRust.rust} as usize, &${keyRust.rust}, ${messageRust.rust}.as_bytes())?`,
+    ty: "bool",
+  };
 }
 
 function sameTy(left: ValueTy, right: ValueTy): boolean {

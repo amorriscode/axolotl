@@ -9,8 +9,17 @@ import {
   require,
   system,
   token,
+  ed25519,
+  secp256k1,
   type Account,
   type AssociatedTokenProgram,
+  type bytes32,
+  type EpochRewards,
+  type Fees,
+  type LastRestartSlot,
+  type Option,
+  type RecentBlockhashes,
+  type SlotHistory,
   type Clock,
   type EpochSchedule,
   type Event,
@@ -32,7 +41,6 @@ import {
   type UncheckedAccount,
   type Vec,
   type ZeroCopy,
-  type bytes32,
   type i64,
   type u128,
   type u16,
@@ -429,4 +437,127 @@ export function reopen(
     counter.authority = authority.key;
   }
   counter.count = counter.count + 1n;
+}
+
+export type Move =
+  | { kind: "Set"; amount: u64 }
+  | { kind: "Clear" };
+
+export function gated(
+  counter: Account<Counter, { mut: true; constraint: "counter.count > 0" }>,
+): void {
+  counter.count = counter.count + 1n;
+}
+
+export function checkOwner(
+  account: UncheckedAccount<{ owner: "tokenProgram" }>,
+  tokenProgram: TokenProgram,
+): void {
+  log(account.key);
+}
+
+export function checkAddress(
+  account: UncheckedAccount<{ address: "11111111111111111111111111111111" }>,
+): void {
+  log(account.key);
+}
+
+export function checkForeign(
+  marker: UncheckedAccount<{ seeds: ["mark"]; bump: true; program: "echoProgram" }>,
+  echoProgram: Program,
+): void {
+  log(marker.key);
+}
+
+export function shapeArgs(value: Option<u64>, items: Vec<u64>): u64 {
+  let base: u64 = value ?? 0n;
+  return base + items.length;
+}
+
+export function classify(
+  counter: Account<Counter, { mut: true }>,
+  side: Side,
+): void {
+  switch (side) {
+    case Side.Left: {
+      counter.count = 1n;
+      break;
+    }
+    case Side.Right: {
+      counter.count = 2n;
+      break;
+    }
+  }
+}
+
+export function apply(
+  counter: Account<Counter, { mut: true }>,
+  action: Move,
+): void {
+  switch (action.kind) {
+    case "Set": {
+      counter.count = action.amount;
+      break;
+    }
+    case "Clear": {
+      counter.count = 0n;
+      break;
+    }
+  }
+}
+
+export function readLegacy(
+  fees: Fees,
+  recent: RecentBlockhashes,
+  history: SlotHistory,
+  restart: LastRestartSlot,
+  rewards: EpochRewards,
+): u64 {
+  return fees.lamportsPerSignature + recent.bytes + history.bytes + restart.slot + rewards.bytes;
+}
+
+export function acceptEd25519(
+  instructions: Instructions,
+  publicKey: bytes32,
+  message: string,
+): void {
+  require(ed25519.check(instructions, 0, publicKey, message), "Precompile mismatch");
+}
+
+export function acceptSecp256k1(
+  instructions: Instructions,
+  address: bytes32,
+  message: string,
+): void {
+  require(secp256k1.check(instructions, 0, address, message), "Precompile mismatch");
+}
+
+export function checkExecutable(
+  program: UncheckedAccount<{ executable: true }>,
+): void {
+  log(program.key);
+}
+
+export function checkToken(
+  account: Account<TokenAccount, { tokenMint: "mint"; tokenAuthority: "owner" }>,
+  mint: Mint,
+  owner: Signer,
+): void {
+  log(account.key);
+}
+
+export function initZero(
+  counter: Account<Counter, { zero: true }>,
+  authority: Signer,
+): void {
+  counter.authority = authority.key;
+  counter.count = 3n;
+}
+
+export function checkAta(
+  account: Account<TokenAccount, { associatedMint: "mint"; associatedAuthority: "owner" }>,
+  mint: Mint,
+  owner: Signer,
+): void {
+  log(account.key);
 }

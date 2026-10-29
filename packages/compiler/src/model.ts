@@ -35,9 +35,15 @@ export interface StructModel {
   file: string;
 }
 
+export interface EnumVariant {
+  name: string;
+  rustName: string;
+  fields: FieldModel[];
+}
+
 export interface EnumModel {
   name: string;
-  variants: { name: string; rustName: string }[];
+  variants: EnumVariant[];
   loc: Loc;
 }
 
@@ -58,12 +64,36 @@ export interface AccountOpts {
   optional: boolean;
   /** Reallocate the account to this many bytes. */
   realloc?: number;
+  /** Account name, or a base58 address. */
+  owner?: string;
+  /** Account name, or a base58 address. */
+  address?: string;
+  /** Boolean expression, lowered into Anchor's `constraint =`. */
+  constraint?: string;
+  /** Rust for `constraint`, filled in while lowering. */
+  constraintRust?: string;
+  /** Account whose program id derives `seeds`. Anchor `seeds::program`. */
+  seedsProgram?: string;
+  executable?: boolean;
+  /** Account was created by the client and is still zeroed. Anchor `zero`. */
+  zero?: boolean;
+  tokenMint?: string;
+  tokenAuthority?: string;
+  associatedMint?: string;
+  associatedAuthority?: string;
 }
+
+export type ArgTy =
+  | Scalar
+  | { option: Scalar }
+  | { vec: Scalar }
+  | { enum: string };
 
 export type AccountKind =
   | "user" | "signer" | "system" | "tokenProgram" | "token2022" | "associatedToken" | "tokenAccount" | "mint"
   | "unchecked" | "systemAccount" | "clock" | "rent" | "program" | "remaining"
-  | "instructions" | "epochSchedule" | "slotHashes" | "stakeHistory";
+  | "instructions" | "epochSchedule" | "slotHashes" | "stakeHistory"
+  | "fees" | "recentBlockhashes" | "slotHistory" | "lastRestart" | "epochRewards";
 
 export interface AccountParam {
   kind: "account";
@@ -79,7 +109,7 @@ export interface ArgParam {
   kind: "arg";
   name: string;
   rustName: string;
-  ty: Scalar;
+  ty: ArgTy;
   loc: Loc;
 }
 
@@ -155,7 +185,7 @@ export interface Idl {
     name: string;
     type:
       | { kind: "struct"; fields: { name: string; type: IdlType | string | { vec: string } | { defined: { name: string } } }[] }
-      | { kind: "enum"; variants: { name: string }[] };
+      | { kind: "enum"; variants: { name: string; fields?: { name: string; type: IdlType | string | { vec: string } | { defined: { name: string } } }[] }[] };
   }[];
   events: { name: string; discriminator: number[] }[];
   errors: { code: number; name: string; msg: string }[];
@@ -165,7 +195,7 @@ export interface IdlInstruction {
   name: string;
   discriminator: number[];
   accounts: IdlAccount[];
-  args: { name: string; type: string | { array: ["u8", number] } }[];
+  args: { name: string; type: IdlType | { option: Scalar } | { vec: Scalar } | { defined: { name: string } } }[];
 }
 
 export interface IdlAccount {

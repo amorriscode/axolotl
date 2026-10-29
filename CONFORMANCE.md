@@ -1,6 +1,6 @@
 # Axolotl conformance
 
-Generated 2026-10-29. 40 passing, 0 failing, 7 unsupported. **Pass rate 85.1%** (40/47).
+Generated 2026-10-29. 54 passing, 0 failing, 0 unsupported. **Pass rate 100%** (54/54).
 
 Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and executed in [LiteSVM](https://www.litesvm.com/) 1.6.1.
 
@@ -46,13 +46,20 @@ Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and
 | Accounts | has_one constraint failure | pass | conformance |
 | Language | Checked addition overflow | pass | conformance |
 | PDAs | PDA seeds constraint failure | pass | conformance |
-| Compiler | Direct sBPF / SBF codegen | unsupported | Axolotl emits Anchor Rust and uses the Agave toolchain. A private syscall backend would track every Agave release. |
-| Accounts | constraint, owner, and address expressions | unsupported | Account options are mut, init, initIfNeeded, payer, seeds, bump, has_one, close, optional, and realloc. |
-| PDAs | PDAs derived under another program | unsupported | Seeds are always derived from the program being compiled. There is no seeds::program. |
-| Types | Option and unsized Vec instruction arguments | unsupported | Instruction arguments are scalars, Pubkey, bytes32, or string. Account Vec fields have a declared maximum. |
-| Language | switch / match | unsupported | Unit enums can be stored and compared. There is no match or switch. |
-| Sysvars | Fees, RecentBlockhashes, and SlotHistory | unsupported | Clock, Rent, EpochSchedule, Instructions, SlotHashes, and StakeHistory are the exposed sysvars. |
-| Runtime | ed25519 and secp256k1 precompiles | unsupported | No instruction for signature precompiles. The instructions sysvar exposes only the current index. |
+| Accounts | owner constraint | pass | conformance |
+| Accounts | address constraint | pass | conformance |
+| Accounts | constraint expressions | pass | conformance |
+| PDAs | seeds::program | pass | PDA derived under the echo program. |
+| Types | Option and unsized Vec instruction arguments | pass | conformance |
+| Language | switch on unit enums | pass | conformance |
+| Types | Data-carrying enums and match | pass | Discriminated unions lower to Anchor enums with fields. |
+| Sysvars | Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards | pass | Read from the accounts Agave 4.1 still exposes. Values are compared with LiteSVM. |
+| Runtime | ed25519 precompile via the instructions sysvar | pass | conformance |
+| Runtime | secp256k1 precompile via the instructions sysvar | pass | conformance |
+| Accounts | executable constraint | pass | conformance |
+| Tokens | token::mint and token::authority | pass | conformance |
+| Tokens | associated_token mint and authority | pass | conformance |
+| Accounts | zero constraint | pass | The client creates the account. The program writes the discriminator. |
 
 ## How to reproduce
 
@@ -63,4 +70,8 @@ CARGO_TARGET_DIR=$PWD/.anchor-target npm run build:programs
 npm run conformance
 ```
 
-Failing rows are bugs. Unsupported rows are gaps in the TypeScript subset, documented in [docs/language.md](docs/language.md).
+Failing rows are bugs. The table is Anchor's feature surface as Axolotl implements it.
+
+## Not on this scoreboard
+
+Direct sBPF emission is not an Anchor feature, so it is not a row. Anchor compiles Rust; the Agave toolchain emits the sBPF program and the IDL. Axolotl does the same after lowering TypeScript to that Rust. A second backend that called syscalls itself would be a different compiler, and it would have to be rewritten whenever Agave changes the syscall surface. That choice is the architecture in the README, not a missing Solana feature.

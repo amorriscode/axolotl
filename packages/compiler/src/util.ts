@@ -1,4 +1,4 @@
-import type { FieldModel, FieldTy, Scalar } from "./model.ts";
+import type { ArgTy, EnumModel, FieldModel, FieldTy, Scalar } from "./model.ts";
 
 const RUST_KEYWORDS = new Set([
   "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
@@ -71,6 +71,20 @@ export function rustLiteral(value: bigint, ty: Scalar): string {
   return `${value}${ty}`;
 }
 
+export function rustArgType(ty: ArgTy): string {
+  if (typeof ty === "string") return rustType(ty);
+  if ("option" in ty) return `Option<${rustType(ty.option)}>`;
+  if ("vec" in ty) return `Vec<${rustType(ty.vec)}>`;
+  return ty.enum;
+}
+
+export function idlArgType(ty: ArgTy): string | { array: ["u8", number] } | { option: Scalar } | { vec: Scalar } | { defined: { name: string } } {
+  if (typeof ty === "string") return idlType(ty);
+  if ("option" in ty) return { option: ty.option };
+  if ("vec" in ty) return { vec: ty.vec };
+  return { defined: { name: ty.enum } };
+}
+
 export function rustType(ty: Scalar): string {
   if (ty === "pubkey") return "Pubkey";
   if (ty === "string") return "String";
@@ -121,21 +135,30 @@ export function scalarBytes(ty: Scalar): number {
   return size;
 }
 
-export function fieldBytes(ty: FieldTy, structs: Map<string, FieldModel[]>): number {
+export function fieldBytes(ty: FieldTy, structs: Map<string, FieldModel[]>, enums?: Map<string, EnumModel["variants"]>): number {
   if (typeof ty === "string") {
     if (ty === "string") throw new Error("string fields have no static size");
     return scalarBytes(ty);
   }
-  if (ty.kind === "enum") return 1;
+  if (ty.kind === "enum") {
+    const variants = enums?.get(ty.name);
+    if (!variants || variants.every((variant) => variant.fields.length === 0)) return 1;
+    let max = 0;
+    for (const variant of variants) {
+      const size = variant.fields.reduce((sum, field) => sum + fieldBytes(field.ty, structs, enums), 0);
+      if (size > max) max = size;
+    }
+    return 1 + max;
+  }
   if (ty.kind === "str") return 4 + ty.max;
   if (ty.kind === "vec") return 4 + ty.max * scalarBytes(ty.inner);
   const nested = structs.get(ty.name);
   if (!nested) throw new Error(`unknown struct ${ty.name}`);
-  return nested.reduce((sum, field) => sum + fieldBytes(field.ty, structs), 0);
+  return nested.reduce((sum, field) => sum + fieldBytes(field.ty, structs, enums), 0);
 }
 
-export function accountSpace(fields: FieldModel[], structs: Map<string, FieldModel[]>): number {
-  return fields.reduce((sum, field) => sum + fieldBytes(field.ty, structs), 0);
+export function accountSpace(fields: FieldModel[], structs: Map<string, FieldModel[]>, enums?: Map<string, EnumModel["variants"]>): number {
+  return fields.reduce((sum, field) => sum + fieldBytes(field.ty, structs, enums), 0);
 }
 
 export const RESERVED_STRUCTS = new Set([

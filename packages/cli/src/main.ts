@@ -101,6 +101,15 @@ function walkTs(dir: string): string[] {
   return files;
 }
 
+function writeProgramId(root: string, id: string): void {
+  const file = path.join(root, "axolotl.toml");
+  const text = readFileSync(file, "utf8");
+  const next = /^id\s*=\s*".*"$/m.test(text)
+    ? text.replace(/^id\s*=\s*".*"$/m, `id = "${id}"`)
+    : text.replace(/\[program\]\n/, `[program]\nid = "${id}"\n`);
+  writeFileSync(file, next);
+}
+
 function ensureKeypair(project: ProjectConfig): { id: string; secret: number[] } {
   const file = path.resolve(project.root, project.keypairPath);
   mkdirSync(path.dirname(file), { recursive: true });
@@ -110,15 +119,20 @@ function ensureKeypair(project: ProjectConfig): { id: string; secret: number[] }
     const spki = publicKey.export({ format: "der", type: "spki" });
     const seed = pkcs8.subarray(pkcs8.length - 32);
     const pub = spki.subarray(spki.length - 32);
-    const secret = Buffer.concat([seed, pub]);
-    writeFileSync(file, JSON.stringify([...secret]));
+    const secret = [...Buffer.concat([seed, pub])];
+    writeFileSync(file, JSON.stringify(secret));
+    const id = pubkeyFromKeypair(Uint8Array.from(secret));
+    writeProgramId(project.root, id);
     console.log(`Generated program keypair ${file}`);
+    console.log(`Program id ${id}`);
+    return { id, secret };
   }
   const secret = JSON.parse(readFileSync(file, "utf8")) as number[];
   const id = pubkeyFromKeypair(Uint8Array.from(secret));
   if (project.programId && project.programId !== id) {
     fail(`program.id ${project.programId} does not match keypair ${file} (${id}).`);
   }
+  if (!project.programId) writeProgramId(project.root, id);
   return { id, secret };
 }
 
@@ -371,6 +385,18 @@ export function increment(
     include: ["src"],
   }, null, 2));
   writeFileSync(path.join(dir, "README.md"), `# ${name}\n\nAn [Axolotl](https://github.com/amorriscode/axolotl) program.\n\n\`\`\`sh\naxolotl build\naxolotl test\naxolotl deploy --cluster localhost\n\`\`\`\n`);
+  ensureKeypair({
+    root: dir,
+    name,
+    version: "0.1.0",
+    description: "An Axolotl program",
+    programId: "",
+    keypairPath: `keys/${name}.json`,
+    cluster: "localnet",
+    wallet: "~/.config/solana/id.json",
+    anchor: ANCHOR,
+    solana: SOLANA,
+  });
   console.log(`Initialized ${dir}`);
   console.log(`Open src/${name}.ts, then run axolotl build.`);
 }

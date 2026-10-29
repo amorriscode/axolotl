@@ -1,4 +1,4 @@
-import { discriminator } from "./codec.ts";
+import { discriminator, isPubkey } from "./codec.ts";
 import type { Loc } from "./diagnostics.ts";
 import type {
   AccountParam,
@@ -12,7 +12,7 @@ import type {
   SourceMap,
   StructModel,
 } from "./model.ts";
-import { accountSpace, idlFieldType, idlType, rustFieldType, rustType, snake } from "./util.ts";
+import { accountSpace, idlArgType, idlFieldType, idlType, rustArgType, rustFieldType, rustType, snake } from "./util.ts";
 
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 const CLOCK = "SysvarC1ock11111111111111111111111111111111";
@@ -22,6 +22,13 @@ const EPOCH = "SysvarEpochSchedu1e111111111111111111111111";
 const SLOT_HASHES = "SysvarS1otHashes111111111111111111111111111";
 const STAKE_HISTORY = "SysvarStakeHistory1111111111111111111111111";
 const TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const FEES = "SysvarFees111111111111111111111111111111111";
+const RECENT_BLOCKHASHES = "SysvarRecentB1ockHashes11111111111111111111";
+const SLOT_HISTORY = "SysvarS1otHistory11111111111111111111111111";
+const LAST_RESTART = "SysvarLastRestartS1ot1111111111111111111111";
+const EPOCH_REWARDS = "SysvarEpochRewards1111111111111111111111111";
+const ED25519 = "Ed25519SigVerify111111111111111111111111111";
+const SECP256K1 = "KeccakSecp256k11111111111111111111111111111";
 const ASSOCIATED_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 
 export function emitRust(program: ProgramModel): { rust: string; sourceMap: SourceMap } {
@@ -60,12 +67,19 @@ export function emitRust(program: ProgramModel): { rust: string; sourceMap: Sour
   for (const item of program.enums) {
     push("#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]");
     push(`pub enum ${item.name} {`);
-    for (const variant of item.variants) push(`    ${variant.rustName},`);
+    for (const variant of item.variants) {
+      if (variant.fields.length === 0) push(`    ${variant.rustName},`);
+      else {
+        const fields = variant.fields.map((field) => `${field.rustName}: ${rustType(field.ty as Scalar)}`).join(", ");
+        push(`    ${variant.rustName} { ${fields} },`);
+      }
+    }
     push("}");
     push("");
   }
   const structFields = new Map(program.structs.map((item) => [item.name, item.fields]));
-  for (const struct of program.structs) emitStruct(struct, structFields, push);
+  const enumVariants = new Map(program.enums.map((item) => [item.name, item.variants]));
+  for (const struct of program.structs) emitStruct(struct, structFields, enumVariants, push);
 
   for (const instruction of program.instructions) {
     if (instruction.failed) continue;
@@ -93,7 +107,7 @@ function emitInstruction(
   push: (text: string, loc?: Loc) => void,
 ): void {
   const args = instruction.params.filter((param): param is ArgParam => param.kind === "arg");
-  const argList = args.map((arg) => `${arg.rustName}: ${rustType(arg.ty)}`).join(", ");
+  const argList = args.map((arg) => `${arg.rustName}: ${rustArgType(arg.ty)}`).join(", ");
   const params = [`ctx: Context<${pascal(instruction.rustName)}>`, argList].filter(Boolean).join(", ");
   const ret = instruction.returnType ? rustType(instruction.returnType) : "()";
   push(`    pub fn ${instruction.rustName}(${params}) -> Result<${ret}> {`, instruction.loc);
@@ -118,7 +132,12 @@ function emitHelper(helper: ProgramModel["helpers"][number], push: (text: string
   push("");
 }
 
-function emitStruct(struct: StructModel, structs: Map<string, StructModel["fields"]>, push: (text: string, loc?: Loc) => void): void {
+function emitStruct(
+  struct: StructModel,
+  structs: Map<string, StructModel["fields"]>,
+  enums: Map<string, ProgramModel["enums"][number]["variants"]>,
+  push: (text: string, loc?: Loc) => void,
+): void {
   const fields = () => {
     for (const field of struct.fields) push(`    pub ${field.rustName}: ${rustFieldType(field.ty)},`, field.loc);
   };
@@ -131,7 +150,7 @@ function emitStruct(struct: StructModel, structs: Map<string, StructModel["field
     push(`    pub const INIT_SPACE: usize = std::mem::size_of::<${struct.name}>();`);
     push("}");
   } else if (struct.kind === "account") {
-    const space = accountSpace(struct.fields, structs);
+    const space = accountSpace(struct.fields, structs, enums);
     push("#[account]", struct.loc);
     push(`pub struct ${struct.name} {`, struct.loc);
     fields();
@@ -164,7 +183,7 @@ function emitAccounts(
   if (instruction.usesEventCpi) push("#[event_cpi]");
   push("#[derive(Accounts)]");
   if (usesArgSeed) {
-    const list = args.map((arg) => `${arg.rustName}: ${rustType(arg.ty)}`).join(", ");
+    const list = args.map((arg) => `${arg.rustName}: ${rustArgType(arg.ty)}`).join(", ");
     push(`#[instruction(${list})]`);
   }
   const structName = pascal(instruction.rustName);
@@ -178,7 +197,7 @@ function emitAccounts(
   for (const account of accounts) {
     if (account.accountKind === "remaining") continue;
     const attr = accountAttr(account, program);
-    if (account.accountKind === "unchecked" || account.accountKind === "program" || account.accountKind === "instructions" || account.accountKind === "slotHashes" || account.accountKind === "stakeHistory" || account.accountKind === "associatedToken") {
+    if (account.accountKind === "unchecked" || account.accountKind === "program" || account.accountKind === "instructions" || account.accountKind === "slotHashes" || account.accountKind === "stakeHistory" || account.accountKind === "associatedToken" || account.accountKind === "fees" || account.accountKind === "recentBlockhashes" || account.accountKind === "slotHistory" || account.accountKind === "lastRestart" || account.accountKind === "epochRewards") {
       push("    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.");
     }
     if (attr) push(`    #[account(${attr})]`);
@@ -199,7 +218,7 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
   }
   if (opts.realloc !== undefined) {
     parts.push("mut", `realloc = ${opts.realloc}`, `realloc::payer = ${snake(opts.payer ?? "")}`, "realloc::zero = true");
-  } else if (opts.mut && !opts.init && !opts.initIfNeeded) parts.push("mut");
+  } else if (opts.mut && !opts.init && !opts.initIfNeeded && !opts.zero) parts.push("mut");
   if (opts.seeds.length > 0) {
     const seeds = opts.seeds.map((seed) => seedRust(seed, program, instructionArgs(account, program))).join(", ");
     parts.push(`seeds = [${seeds}]`);
@@ -212,11 +231,27 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
   }
   for (const rel of opts.hasOne) parts.push(`has_one = ${snake(rel)}`);
   if (opts.close) parts.push(`close = ${snake(opts.close)}`);
+  if (opts.owner) parts.push(`owner = ${pubkeyOrAccount(opts.owner)}`);
+  if (opts.address && account.accountKind !== "instructions" && account.accountKind !== "slotHashes" && account.accountKind !== "stakeHistory" && account.accountKind !== "fees" && account.accountKind !== "recentBlockhashes" && account.accountKind !== "slotHistory" && account.accountKind !== "lastRestart" && account.accountKind !== "epochRewards" && account.accountKind !== "associatedToken") {
+    parts.push(`address = ${pubkeyOrAccount(opts.address)}`);
+  }
+  if (opts.constraintRust) parts.push(`constraint = ${opts.constraintRust}`);
+  if (opts.seedsProgram) parts.push(`seeds::program = ${snake(opts.seedsProgram)}.key()`);
+  if (opts.executable) parts.push("executable");
+  if (opts.zero) parts.push("zero");
+  if (opts.tokenMint) parts.push(`token::mint = ${snake(opts.tokenMint)}`);
+  if (opts.tokenAuthority) parts.push(`token::authority = ${snake(opts.tokenAuthority)}`);
+  if (opts.associatedMint) parts.push(`associated_token::mint = ${snake(opts.associatedMint)}`);
+  if (opts.associatedAuthority) parts.push(`associated_token::authority = ${snake(opts.associatedAuthority)}`);
   if (account.accountKind === "instructions") parts.push(`address = pubkey!("${INSTRUCTIONS}")`);
   if (account.accountKind === "slotHashes") parts.push(`address = pubkey!("${SLOT_HASHES}")`);
   if (account.accountKind === "stakeHistory") parts.push(`address = pubkey!("${STAKE_HISTORY}")`);
   if (account.accountKind === "associatedToken") parts.push(`address = pubkey!("${ASSOCIATED_TOKEN}")`);
   return parts.join(", ");
+}
+
+function pubkeyOrAccount(value: string): string {
+  return isPubkey(value) ? `pubkey!("${value}")` : `${snake(value)}.key()`;
 }
 
 function instructionArgs(account: AccountParam, program: ProgramModel): ArgParam[] {
@@ -277,6 +312,11 @@ function accountRustType(account: AccountParam, program: ProgramModel): string {
       return "Sysvar<'info, EpochSchedule>";
     case "slotHashes":
     case "stakeHistory":
+    case "fees":
+    case "recentBlockhashes":
+    case "slotHistory":
+    case "lastRestart":
+    case "epochRewards":
       return "UncheckedAccount<'info>";
     case "remaining":
       return "AccountInfo<'info>";
@@ -319,6 +359,48 @@ function emitCodec(push: (text: string, loc?: Loc) => void): void {
   push("        let config = state.get_extension::<anchor_spl::token_2022::spl_token_2022::extension::transfer_fee::TransferFeeConfig>()?;");
   push("        Ok(u16::from(config.newer_transfer_fee.transfer_fee_basis_points))");
   push("    }");
+  push("    pub fn instruction_at(ix: &AccountInfo, index: usize) -> Result<(Pubkey, Vec<u8>)> {");
+  push("        let data = ix.try_borrow_data()?;");
+  push("        if data.len() < 2 { return Err(ProgramError::InvalidInstructionData.into()); }");
+  push("        let count = u16::from_le_bytes([data[0], data[1]]) as usize;");
+  push("        if index >= count || 2 + index * 2 + 2 > data.len() { return Err(ProgramError::InvalidArgument.into()); }");
+  push("        let start = u16::from_le_bytes([data[2 + index * 2], data[3 + index * 2]]) as usize;");
+  push("        if start + 2 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }");
+  push("        let accounts = u16::from_le_bytes([data[start], data[start + 1]]) as usize;");
+  push("        let mut cursor = start + 2;");
+  push("        for _ in 0..accounts {");
+  push("            if cursor + 33 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }");
+  push("            cursor += 33;");
+  push("        }");
+  push("        if cursor + 34 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }");
+  push("        let mut program_id = [0u8; 32];");
+  push("        program_id.copy_from_slice(&data[cursor..cursor + 32]);");
+  push("        cursor += 32;");
+  push("        let len = u16::from_le_bytes([data[cursor], data[cursor + 1]]) as usize;");
+  push("        cursor += 2;");
+  push("        if cursor + len > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }");
+  push("        Ok((Pubkey::new_from_array(program_id), data[cursor..cursor + len].to_vec()))");
+  push("    }");
+  push("    pub fn check_ed25519(ix: &AccountInfo, index: usize, pubkey: &[u8; 32], message: &[u8]) -> Result<bool> {");
+  push("        let (program_id, data) = instruction_at(ix, index)?;");
+  push(`        let ed = pubkey!("${ED25519}");`);
+  push("        if program_id != ed || data.len() < 16 || data[0] != 1 { return Ok(false); }");
+  push("        let pk_off = u16::from_le_bytes([data[6], data[7]]) as usize;");
+  push("        let msg_off = u16::from_le_bytes([data[10], data[11]]) as usize;");
+  push("        let msg_len = u16::from_le_bytes([data[12], data[13]]) as usize;");
+  push("        if pk_off.saturating_add(32) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }");
+  push("        Ok(&data[pk_off..pk_off + 32] == pubkey.as_ref() && &data[msg_off..msg_off + msg_len] == message)");
+  push("    }");
+  push("    pub fn check_secp256k1(ix: &AccountInfo, index: usize, address: &[u8; 32], message: &[u8]) -> Result<bool> {");
+  push("        let (program_id, data) = instruction_at(ix, index)?;");
+  push(`        let secp = pubkey!("${SECP256K1}");`);
+  push("        if program_id != secp || data.len() < 12 || data[0] != 1 { return Ok(false); }");
+  push("        let eth_off = u16::from_le_bytes([data[4], data[5]]) as usize;");
+  push("        let msg_off = u16::from_le_bytes([data[7], data[8]]) as usize;");
+  push("        let msg_len = u16::from_le_bytes([data[9], data[10]]) as usize;");
+  push("        if eth_off.saturating_add(20) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }");
+  push("        Ok(&data[eth_off..eth_off + 20] == &address[..20] && &data[msg_off..msg_off + msg_len] == message)");
+  push("    }");
   push("}");
   push("");
 }
@@ -342,7 +424,7 @@ export function emitIdl(program: ProgramModel): Idl {
       accounts: idlAccounts(instruction, program),
       args: instruction.params.filter((param): param is ArgParam => param.kind === "arg").map((arg) => ({
         name: arg.rustName,
-        type: idlType(arg.ty),
+        type: idlArgType(arg.ty),
       })),
     })),
     accounts: program.structs.filter((struct) => struct.kind === "account").map((struct) => ({
@@ -361,7 +443,9 @@ export function emitIdl(program: ProgramModel): Idl {
         name: item.name,
         type: {
           kind: "enum" as const,
-          variants: item.variants.map((variant) => ({ name: variant.rustName })),
+          variants: item.variants.map((variant) => variant.fields.length === 0
+            ? { name: variant.rustName }
+            : { name: variant.rustName, fields: variant.fields.map((field) => ({ name: field.rustName, type: idlType(field.ty as Scalar) })) }),
         },
       })),
     ],
@@ -410,6 +494,11 @@ function idlAccount(account: AccountParam): IdlAccount {
   if (account.accountKind === "epochSchedule") result.address = EPOCH;
   if (account.accountKind === "slotHashes") result.address = SLOT_HASHES;
   if (account.accountKind === "stakeHistory") result.address = STAKE_HISTORY;
+  if (account.accountKind === "fees") result.address = FEES;
+  if (account.accountKind === "recentBlockhashes") result.address = RECENT_BLOCKHASHES;
+  if (account.accountKind === "slotHistory") result.address = SLOT_HISTORY;
+  if (account.accountKind === "lastRestart") result.address = LAST_RESTART;
+  if (account.accountKind === "epochRewards") result.address = EPOCH_REWARDS;
   if (account.accountKind === "token2022") result.address = TOKEN_2022;
   if (account.accountKind === "associatedToken") result.address = ASSOCIATED_TOKEN;
   if (account.opts.optional) result.optional = true;

@@ -1,10 +1,10 @@
 {
   "generated": "2026-10-29",
-  "passed": 40,
+  "passed": 54,
   "failed": 0,
-  "unsupported": 7,
-  "total": 47,
-  "passRate": 85.1,
+  "unsupported": 0,
+  "total": 54,
+  "passRate": 100,
   "anchor": "1.2.2",
   "solana": "4.1.2",
   "runtime": "litesvm 1.6.1",
@@ -290,53 +290,102 @@
       "detail": "conformance"
     },
     {
-      "id": "backend.sbpf",
-      "group": "Compiler",
-      "feature": "Direct sBPF / SBF codegen",
-      "status": "unsupported",
-      "detail": "Axolotl emits Anchor Rust and uses the Agave toolchain. A private syscall backend would track every Agave release."
+      "id": "accounts.owner",
+      "group": "Accounts",
+      "feature": "owner constraint",
+      "status": "pass",
+      "detail": "conformance"
     },
     {
-      "id": "constraints.expr",
+      "id": "accounts.address",
       "group": "Accounts",
-      "feature": "constraint, owner, and address expressions",
-      "status": "unsupported",
-      "detail": "Account options are mut, init, initIfNeeded, payer, seeds, bump, has_one, close, optional, and realloc."
+      "feature": "address constraint",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "accounts.constraint",
+      "group": "Accounts",
+      "feature": "constraint expressions",
+      "status": "pass",
+      "detail": "conformance"
     },
     {
       "id": "pda.external",
       "group": "PDAs",
-      "feature": "PDAs derived under another program",
-      "status": "unsupported",
-      "detail": "Seeds are always derived from the program being compiled. There is no seeds::program."
+      "feature": "seeds::program",
+      "status": "pass",
+      "detail": "PDA derived under the echo program."
     },
     {
       "id": "args.dynamic",
       "group": "Types",
       "feature": "Option and unsized Vec instruction arguments",
-      "status": "unsupported",
-      "detail": "Instruction arguments are scalars, Pubkey, bytes32, or string. Account Vec fields have a declared maximum."
+      "status": "pass",
+      "detail": "conformance"
     },
     {
       "id": "lang.match",
       "group": "Language",
-      "feature": "switch / match",
-      "status": "unsupported",
-      "detail": "Unit enums can be stored and compared. There is no match or switch."
+      "feature": "switch on unit enums",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "types.enum-data",
+      "group": "Types",
+      "feature": "Data-carrying enums and match",
+      "status": "pass",
+      "detail": "Discriminated unions lower to Anchor enums with fields."
     },
     {
       "id": "sysvar.history",
       "group": "Sysvars",
-      "feature": "Fees, RecentBlockhashes, and SlotHistory",
-      "status": "unsupported",
-      "detail": "Clock, Rent, EpochSchedule, Instructions, SlotHashes, and StakeHistory are the exposed sysvars."
+      "feature": "Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards",
+      "status": "pass",
+      "detail": "Read from the accounts Agave 4.1 still exposes. Values are compared with LiteSVM."
     },
     {
-      "id": "crypto.precompile",
+      "id": "crypto.ed25519",
       "group": "Runtime",
-      "feature": "ed25519 and secp256k1 precompiles",
-      "status": "unsupported",
-      "detail": "No instruction for signature precompiles. The instructions sysvar exposes only the current index."
+      "feature": "ed25519 precompile via the instructions sysvar",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "crypto.secp256k1",
+      "group": "Runtime",
+      "feature": "secp256k1 precompile via the instructions sysvar",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "accounts.executable",
+      "group": "Accounts",
+      "feature": "executable constraint",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "tokens.constraints",
+      "group": "Tokens",
+      "feature": "token::mint and token::authority",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "tokens.associated",
+      "group": "Tokens",
+      "feature": "associated_token mint and authority",
+      "status": "pass",
+      "detail": "conformance"
+    },
+    {
+      "id": "accounts.zero",
+      "group": "Accounts",
+      "feature": "zero constraint",
+      "status": "pass",
+      "detail": "The client creates the account. The program writes the discriminator."
     }
   ]
 }

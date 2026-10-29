@@ -10,7 +10,7 @@ export interface IdlField {
   type: IdlType;
 }
 
-export type IdlType = string | { array: [string, number] } | { vec: string } | { defined: { name: string } };
+export type IdlType = string | { array: [string, number] } | { vec: IdlType | string } | { option: IdlType | string } | { defined: { name: string } };
 
 export interface IdlInstruction {
   name: string;
@@ -23,7 +23,7 @@ export interface IdlLike {
   address?: string;
   instructions: IdlInstruction[];
   accounts?: { name: string; discriminator: number[] }[];
-  types?: { name: string; type: { kind: string; fields?: IdlField[]; variants?: { name: string }[] } }[];
+  types?: { name: string; type: { kind: string; fields?: IdlField[]; variants?: { name: string; fields?: IdlField[] }[] } }[];
   events?: { name: string; discriminator: number[] }[];
   errors?: { code: number; name: string; msg?: string }[];
 }
@@ -140,7 +140,7 @@ function asBigint(value: unknown): bigint {
   throw new Error(`expected an integer, got ${typeof value}`);
 }
 
-function writeField(writer: Writer, type: IdlType, value: unknown): void {
+function writeField(writer: Writer, type: IdlType, value: unknown, idl?: IdlLike): void {
   if (typeof type === "object" && "array" in type) {
     const [inner, length] = type.array;
     const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(String(value));
@@ -148,6 +148,34 @@ function writeField(writer: Writer, type: IdlType, value: unknown): void {
     out.set(bytes.subarray(0, length));
     if (inner !== "u8") throw new Error(`unsupported array element ${inner}`);
     writer.bytes(out);
+    return;
+  }
+  if (typeof type === "object" && type && "option" in type) {
+    if (value === null || value === undefined) writer.u8(0);
+    else {
+      writer.u8(1);
+      writeField(writer, type.option, value, idl);
+    }
+    return;
+  }
+  if (typeof type === "object" && type && "vec" in type) {
+    if (!Array.isArray(value)) throw new Error("vec argument must be an array");
+    writer.u32(value.length);
+    for (const item of value) writeField(writer, type.vec, item, idl);
+    return;
+  }
+  if (typeof type === "object" && type && "defined" in type) {
+    const defined = idl?.types?.find((item) => item.name === type.defined.name);
+    if (defined?.type.kind !== "enum") throw new Error(`Unknown enum ${type.defined.name}`);
+    const kind = typeof value === "string" ? value : (value as { kind?: string }).kind;
+    const index = defined.type.variants?.findIndex((variant) => variant.name === kind) ?? -1;
+    if (index < 0) throw new Error(`Unknown variant ${String(kind)}`);
+    writer.u8(index);
+    const variant = defined.type.variants?.[index];
+    if (variant?.fields && value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      for (const field of variant.fields) writeField(writer, field.type, record[field.name], idl);
+    }
     return;
   }
   if (typeof type !== "string") throw new Error(`unsupported IDL type ${JSON.stringify(type)}`);
@@ -179,7 +207,11 @@ function writeField(writer: Writer, type: IdlType, value: unknown): void {
 }
 
 function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
-  if (typeof type === "object" && type && "vec" in type) {
+  if (typeof type === "object" && type && "option" in type) {
+    if (reader.u8() === 0) return null;
+    return readField(reader, type.option, idl);
+  }
+  if (typeof type === "object" && type && "vec" in type && !("array" in type)) {
     const length = Number(reader.uint(4));
     const items = [];
     for (let i = 0; i < length; i++) items.push(readField(reader, type.vec, idl));
@@ -190,7 +222,12 @@ function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
     if (!defined) throw new Error(`Unknown type ${type.defined.name}`);
     if (defined.type.kind === "enum") {
       const index = reader.u8();
-      return defined.type.variants[index]?.name ?? index;
+      const variant = defined.type.variants?.[index];
+      if (!variant) return index;
+      if (!variant.fields?.length) return variant.name;
+      const record: Record<string, unknown> = { kind: variant.name };
+      for (const field of variant.fields) record[field.name] = readField(reader, field.type, idl);
+      return record;
     }
     const result: Record<string, unknown> = {};
     for (const field of defined.type.fields ?? []) result[field.name] = readField(reader, field.type, idl);
@@ -229,7 +266,7 @@ export function encodeInstruction(idl: IdlLike, name: string, args: Record<strin
   writer.bytes(Uint8Array.from(instruction.discriminator));
   for (const arg of instruction.args) {
     if (!(arg.name in args)) throw new Error(`Missing argument "${arg.name}" for ${name}.`);
-    writeField(writer, arg.type, args[arg.name]);
+    writeField(writer, arg.type, args[arg.name], idl);
   }
   return writer.toUint8Array();
 }

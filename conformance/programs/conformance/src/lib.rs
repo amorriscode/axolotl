@@ -304,12 +304,109 @@ pub mod conformance {
         Ok(())
     }
 
+    pub fn gated(ctx: Context<Gated>) -> Result<()> {
+        let __ax_1 = ctx.accounts.counter.count.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
+        ctx.accounts.counter.count = __ax_1;
+        Ok(())
+    }
+
+    pub fn check_owner(ctx: Context<CheckOwner>) -> Result<()> {
+        msg!("{}", ctx.accounts.account.key());
+        Ok(())
+    }
+
+    pub fn check_address(ctx: Context<CheckAddress>) -> Result<()> {
+        msg!("{}", ctx.accounts.account.key());
+        Ok(())
+    }
+
+    pub fn check_foreign(ctx: Context<CheckForeign>) -> Result<()> {
+        msg!("{}", ctx.accounts.marker.key());
+        Ok(())
+    }
+
+    pub fn shape_args(ctx: Context<ShapeArgs>, value: Option<u64>, items: Vec<u64>) -> Result<u64> {
+        let mut base: u64 = value.unwrap_or(0u64);
+        return Ok(base.checked_add((items.len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?);
+    }
+
+    pub fn classify(ctx: Context<Classify>, side: Side) -> Result<()> {
+        match side {
+            Side::Left => {
+                let __ax_1 = 1u64;
+                ctx.accounts.counter.count = __ax_1;
+            }
+            Side::Right => {
+                let __ax_2 = 2u64;
+                ctx.accounts.counter.count = __ax_2;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn apply(ctx: Context<Apply>, action: Move) -> Result<()> {
+        match action {
+            Move::Set { amount } => {
+                let __ax_1 = amount;
+                ctx.accounts.counter.count = __ax_1;
+            }
+            Move::Clear => {
+                let __ax_2 = 0u64;
+                ctx.accounts.counter.count = __ax_2;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn read_legacy(ctx: Context<ReadLegacy>) -> Result<u64> {
+        return Ok({ let __ax_info = ctx.accounts.fees.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; u64::from_le_bytes([__ax_data[0], __ax_data[1], __ax_data[2], __ax_data[3], __ax_data[4], __ax_data[5], __ax_data[6], __ax_data[7]]) }.checked_add((ctx.accounts.recent.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?.checked_add((ctx.accounts.history.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?.checked_add({ let __ax_info = ctx.accounts.restart.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; u64::from_le_bytes([__ax_data[0], __ax_data[1], __ax_data[2], __ax_data[3], __ax_data[4], __ax_data[5], __ax_data[6], __ax_data[7]]) }).ok_or(AxolotlError::ArithmeticOverflow)?.checked_add((ctx.accounts.rewards.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?);
+    }
+
+    pub fn accept_ed25519(ctx: Context<AcceptEd25519>, public_key: [u8; 32], message: String) -> Result<()> {
+        require!(ax_codec::check_ed25519(&ctx.accounts.instructions.to_account_info(), 0u16 as usize, &public_key, message.as_bytes())?, AxolotlError::PrecompileMismatch);
+        Ok(())
+    }
+
+    pub fn accept_secp256k1(ctx: Context<AcceptSecp256k1>, address: [u8; 32], message: String) -> Result<()> {
+        require!(ax_codec::check_secp256k1(&ctx.accounts.instructions.to_account_info(), 0u16 as usize, &address, message.as_bytes())?, AxolotlError::PrecompileMismatch);
+        Ok(())
+    }
+
+    pub fn check_executable(ctx: Context<CheckExecutable>) -> Result<()> {
+        msg!("{}", ctx.accounts.program.key());
+        Ok(())
+    }
+
+    pub fn check_token(ctx: Context<CheckToken>) -> Result<()> {
+        msg!("{}", ctx.accounts.account.key());
+        Ok(())
+    }
+
+    pub fn init_zero(ctx: Context<InitZero>) -> Result<()> {
+        let __ax_1 = ctx.accounts.authority.key();
+        ctx.accounts.counter.authority = __ax_1;
+        let __ax_2 = 3u64;
+        ctx.accounts.counter.count = __ax_2;
+        Ok(())
+    }
+
+    pub fn check_ata(ctx: Context<CheckAta>) -> Result<()> {
+        msg!("{}", ctx.accounts.account.key());
+        Ok(())
+    }
+
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Side {
     Left,
     Right,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Move {
+    Set { amount: u64 },
+    Clear,
 }
 
 #[account]
@@ -658,6 +755,109 @@ pub struct Reopen<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct Gated<'info> {
+    #[account(mut, constraint = (counter.count > 0u64))]
+    pub counter: Account<'info, Counter>,
+}
+
+#[derive(Accounts)]
+pub struct CheckOwner<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    #[account(owner = token_program.key())]
+    pub account: UncheckedAccount<'info>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+pub struct CheckAddress<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    #[account(address = pubkey!("11111111111111111111111111111111"))]
+    pub account: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CheckForeign<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    #[account(seeds = [b"mark"], bump, seeds::program = echo_program.key())]
+    pub marker: UncheckedAccount<'info>,
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    pub echo_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ShapeArgs {}
+
+#[derive(Accounts)]
+pub struct Classify<'info> {
+    #[account(mut)]
+    pub counter: Account<'info, Counter>,
+}
+
+#[derive(Accounts)]
+pub struct Apply<'info> {
+    #[account(mut)]
+    pub counter: Account<'info, Counter>,
+}
+
+#[derive(Accounts)]
+pub struct ReadLegacy<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    pub fees: UncheckedAccount<'info>,
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    pub recent: UncheckedAccount<'info>,
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    pub history: UncheckedAccount<'info>,
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    pub restart: UncheckedAccount<'info>,
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    pub rewards: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptEd25519<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    #[account(address = pubkey!("Sysvar1nstructions1111111111111111111111111"))]
+    pub instructions: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptSecp256k1<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    #[account(address = pubkey!("Sysvar1nstructions1111111111111111111111111"))]
+    pub instructions: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CheckExecutable<'info> {
+    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    #[account(executable)]
+    pub program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CheckToken<'info> {
+    #[account(token::mint = mint, token::authority = owner)]
+    pub account: InterfaceAccount<'info, TokenAccount>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitZero<'info> {
+    #[account(zero)]
+    pub counter: Account<'info, Counter>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CheckAta<'info> {
+    #[account(associated_token::mint = mint, associated_token::authority = owner)]
+    pub account: InterfaceAccount<'info, TokenAccount>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub owner: Signer<'info>,
+}
+
 #[error_code]
 pub enum AxolotlError {
     #[msg("Unauthorized")]
@@ -666,6 +866,8 @@ pub enum AxolotlError {
     WrongWord,
     #[msg("Wrong key")]
     WrongKey,
+    #[msg("Precompile mismatch")]
+    PrecompileMismatch,
     #[msg("Arithmetic overflow or division by zero")]
     ArithmeticOverflow,
 }
@@ -756,6 +958,48 @@ mod ax_codec {
         let state = anchor_spl::token_2022::spl_token_2022::extension::StateWithExtensions::<anchor_spl::token_2022::spl_token_2022::state::Mint>::unpack(&data)?;
         let config = state.get_extension::<anchor_spl::token_2022::spl_token_2022::extension::transfer_fee::TransferFeeConfig>()?;
         Ok(u16::from(config.newer_transfer_fee.transfer_fee_basis_points))
+    }
+    pub fn instruction_at(ix: &AccountInfo, index: usize) -> Result<(Pubkey, Vec<u8>)> {
+        let data = ix.try_borrow_data()?;
+        if data.len() < 2 { return Err(ProgramError::InvalidInstructionData.into()); }
+        let count = u16::from_le_bytes([data[0], data[1]]) as usize;
+        if index >= count || 2 + index * 2 + 2 > data.len() { return Err(ProgramError::InvalidArgument.into()); }
+        let start = u16::from_le_bytes([data[2 + index * 2], data[3 + index * 2]]) as usize;
+        if start + 2 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+        let accounts = u16::from_le_bytes([data[start], data[start + 1]]) as usize;
+        let mut cursor = start + 2;
+        for _ in 0..accounts {
+            if cursor + 33 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+            cursor += 33;
+        }
+        if cursor + 34 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+        let mut program_id = [0u8; 32];
+        program_id.copy_from_slice(&data[cursor..cursor + 32]);
+        cursor += 32;
+        let len = u16::from_le_bytes([data[cursor], data[cursor + 1]]) as usize;
+        cursor += 2;
+        if cursor + len > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+        Ok((Pubkey::new_from_array(program_id), data[cursor..cursor + len].to_vec()))
+    }
+    pub fn check_ed25519(ix: &AccountInfo, index: usize, pubkey: &[u8; 32], message: &[u8]) -> Result<bool> {
+        let (program_id, data) = instruction_at(ix, index)?;
+        let ed = pubkey!("Ed25519SigVerify111111111111111111111111111");
+        if program_id != ed || data.len() < 16 || data[0] != 1 { return Ok(false); }
+        let pk_off = u16::from_le_bytes([data[6], data[7]]) as usize;
+        let msg_off = u16::from_le_bytes([data[10], data[11]]) as usize;
+        let msg_len = u16::from_le_bytes([data[12], data[13]]) as usize;
+        if pk_off.saturating_add(32) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }
+        Ok(&data[pk_off..pk_off + 32] == pubkey.as_ref() && &data[msg_off..msg_off + msg_len] == message)
+    }
+    pub fn check_secp256k1(ix: &AccountInfo, index: usize, address: &[u8; 32], message: &[u8]) -> Result<bool> {
+        let (program_id, data) = instruction_at(ix, index)?;
+        let secp = pubkey!("KeccakSecp256k11111111111111111111111111111");
+        if program_id != secp || data.len() < 12 || data[0] != 1 { return Ok(false); }
+        let eth_off = u16::from_le_bytes([data[4], data[5]]) as usize;
+        let msg_off = u16::from_le_bytes([data[7], data[8]]) as usize;
+        let msg_len = u16::from_le_bytes([data[9], data[10]]) as usize;
+        if eth_off.saturating_add(20) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }
+        Ok(&data[eth_off..eth_off + 20] == &address[..20] && &data[msg_off..msg_off + msg_len] == message)
     }
 }
 
