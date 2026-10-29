@@ -3,9 +3,9 @@
  *
  * A pass that builds these values may not know Rust syntax.
  * `print.ts` is the only place that turns them into source text.
- * Three constructs are still strings in the `text` variant: a CPI invoke,
- * a system transfer, and PDA seeds. The account attribute and the signer
- * prelude share one seed function.
+ * Four constructs are still strings in the `text` variant: a CPI invoke,
+ * a system transfer, a token transfer, and PDA seeds. The account attribute
+ * and the signer prelude share one seed function.
  */
 
 export type CheckOp = "add" | "sub" | "mul" | "div" | "rem";

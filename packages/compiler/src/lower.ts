@@ -273,6 +273,8 @@ function validateAccounts(instruction: ParsedInstruction, structs: StructModel[]
       if (opts.seeds.length > 0) early.push("seeds");
       if (opts.bump) early.push("bump");
       if (opts.address) early.push("address");
+      if (opts.zero) early.push("zero");
+      if (opts.executable) early.push("executable");
       for (const attr of early) {
         diag.error(
           instruction.file,

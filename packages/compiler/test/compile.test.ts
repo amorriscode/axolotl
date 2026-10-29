@@ -459,6 +459,21 @@ export function touch(counter: Account<Counter, { optional: true; address: "1111
   assert.equal(address.rust, "");
 });
 
+test("zero and executable cannot sit on an optional account", () => {
+  const zero = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true; zero: true }>): void {}`);
+  assert.equal(zero.ok, false);
+  assert.match(zero.diagnostics.map((item) => item.message).join("\n"), /zero/);
+  assert.equal(zero.rust, "");
+  const executable = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { optional: true; executable: true }>): void {}`);
+  assert.equal(executable.ok, false);
+  assert.match(executable.diagnostics.map((item) => item.message).join("\n"), /executable/);
+  assert.equal(executable.rust, "");
+});
+
 test("present() on the left of && guards the right, and not the else", () => {
   const guarded = compileOne(`
 export interface Counter { count: u64; }
@@ -503,6 +518,7 @@ test("the IR header names the Rust lowering still prints", () => {
   const text = readFileSync(new URL("../src/ir.ts", import.meta.url), "utf8");
   assert.match(text, /invoke/);
   assert.match(text, /system transfer/);
+  assert.match(text, /token transfer/);
   assert.match(text, /PDA seeds/);
 });
 
