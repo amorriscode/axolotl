@@ -1,6 +1,6 @@
 # Axolotl conformance
 
-Generated 2026-10-29. 54 passing, 0 failing, 0 unsupported. **Pass rate 100%** (54/54).
+Generated 2026-10-29. 50 passing, 0 failing, 0 unsupported. **Pass rate 100%** (50/50).
 
 Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and executed in [LiteSVM](https://www.litesvm.com/) 1.6.1.
 
@@ -9,6 +9,7 @@ Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and
 | Examples | Counter init, has_one, and checked add | pass | examples/counter |
 | Examples | Signer and custom error constraints | pass | examples/counter |
 | Tokens | SPL Token transfer_checked, including a PDA signer | pass | examples/token-vault |
+| Tokens | token::authority rejects the wrong destination | pass | examples/token-vault |
 | PDAs | PDA seeds, stored bump, bytes32, and events | pass | examples/pda-profile |
 | CPI | CPI into another Anchor program | pass | examples/cpi |
 | Accounts | init, payer, rent exemption, program ownership | pass | conformance |
@@ -23,8 +24,7 @@ Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and
 | Types | Pubkey instruction arguments | pass | conformance |
 | Events | Anchor events in transaction logs | pass | conformance |
 | PDAs | Seeds from constants, args, and account keys | pass | conformance |
-| Accounts | init_if_needed | pass | conformance |
-| Runtime | Compute budget | pass | conformance |
+| Language | continue inside for runs the increment | pass | Ten iterations, skip one, counter ends at 9. |
 | IDL | Anchor IDL discriminators, events, and error codes | pass | packages/compiler |
 | Language | while loops and scalar helper functions | pass | conformance |
 | Language | continue | pass | conformance |
@@ -32,15 +32,12 @@ Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and
 | Accounts | Optional accounts | pass | Absent accounts are the program id. present() guards the body. |
 | Accounts | Remaining accounts | pass | conformance |
 | Types | Nested structs, Str, Vec, and unit enums | pass | conformance |
-| Accounts | Zero-copy AccountLoader | pass | conformance |
 | Accounts | realloc | pass | conformance |
-| Sysvars | EpochSchedule, Instructions, SlotHashes, and StakeHistory | pass | conformance |
+| Sysvars | EpochSchedule and the instructions sysvar | pass | conformance |
 | Tokens | Associated token account creation inside the program | pass | conformance |
-| Tokens | Token-2022 transfer-fee extension | pass | conformance |
 | Events | emit_cpi self-CPI events | pass | Decoded from the inner instruction. Anchor 1.2 does not sol_log_data these. |
 | CPI | CPI return data | pass | conformance |
 | CPI | Multiple PDA signers in one CPI | pass | conformance |
-| Runtime | Address lookup tables | pass | A v0 transaction loads the counter through a table created in a previous slot. |
 | Types | u128 account fields | pass | conformance |
 | Language | Checked division | pass | conformance |
 | Accounts | has_one constraint failure | pass | conformance |
@@ -53,8 +50,7 @@ Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and
 | Types | Option and unsized Vec instruction arguments | pass | conformance |
 | Language | switch on unit enums | pass | conformance |
 | Types | Data-carrying enums and match | pass | Discriminated unions lower to Anchor enums with fields. |
-| Sysvars | Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards | pass | Read from the accounts Agave 4.1 still exposes. Values are compared with LiteSVM. |
-| Runtime | ed25519 precompile via the instructions sysvar | pass | conformance |
+| Runtime | ed25519 precompile via the instructions sysvar | pass | Indexes other than this instruction do not count, even when the bytes are present. |
 | Runtime | secp256k1 precompile via the instructions sysvar | pass | conformance |
 | Accounts | executable constraint | pass | conformance |
 | Tokens | token::mint and token::authority | pass | conformance |

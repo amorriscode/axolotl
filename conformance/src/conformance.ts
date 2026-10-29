@@ -14,12 +14,7 @@ import {
   type Account,
   type AssociatedTokenProgram,
   type bytes32,
-  type EpochRewards,
-  type Fees,
-  type LastRestartSlot,
   type Option,
-  type RecentBlockhashes,
-  type SlotHistory,
   type Clock,
   type EpochSchedule,
   type Event,
@@ -30,17 +25,13 @@ import {
   type RemainingAccounts,
   type Rent,
   type Signer,
-  type SlotHashes,
-  type StakeHistory,
   type Str,
   type SystemAccount,
   type SystemProgram,
-  type Token2022Program,
   type TokenAccount,
   type TokenProgram,
   type UncheckedAccount,
   type Vec,
-  type ZeroCopy,
   type i64,
   type u128,
   type u16,
@@ -229,10 +220,6 @@ export interface Shape {
   side: Side;
 }
 
-export interface PodCounter extends ZeroCopy {
-  value: u64;
-}
-
 export interface Grown {
   authority: Pubkey;
   note: Str<16>;
@@ -280,14 +267,6 @@ export function initShape(
   push(shape.samples, 9n);
 }
 
-export function initPod(
-  pod: Account<PodCounter, { init: true; payer: "authority" }>,
-  authority: Signer<{ mut: true }>,
-  systemProgram: SystemProgram,
-): void {
-  pod.value = 11n;
-}
-
 export function initGrown(
   grown: Account<Grown, { init: true; payer: "authority" }>,
   authority: Signer<{ mut: true }>,
@@ -313,10 +292,6 @@ export function readIndex(instructions: Instructions): u16 {
   return instructions.index;
 }
 
-export function readHashes(slotHashes: SlotHashes, stakeHistory: StakeHistory): u64 {
-  return slotHashes.bytes + stakeHistory.bytes;
-}
-
 export function openAta(
   payer: Signer<{ mut: true }>,
   ata: UncheckedAccount<{ mut: true }>,
@@ -327,10 +302,6 @@ export function openAta(
   associatedTokenProgram: AssociatedTokenProgram,
 ): void {
   token.createAssociatedAccount({ payer, account: ata, owner, mint });
-}
-
-export function readFee(mint: Mint, tokenProgram: Token2022Program): u16 {
-  return token.transferFeeBasisPoints(mint);
 }
 
 export function pingCpi(clock: Clock, message: string): void {
@@ -423,22 +394,6 @@ export function add(
   counter.count = counter.count + amount;
 }
 
-export function reopen(
-  counter: Account<Counter, {
-    initIfNeeded: true;
-    payer: "authority";
-    seeds: ["once"];
-    bump: true;
-  }>,
-  authority: Signer<{ mut: true }>,
-  systemProgram: SystemProgram,
-): void {
-  if (counter.count === 0n) {
-    counter.authority = authority.key;
-  }
-  counter.count = counter.count + 1n;
-}
-
 export type Move =
   | { kind: "Set"; amount: u64 }
   | { kind: "Clear" };
@@ -506,14 +461,20 @@ export function apply(
   }
 }
 
-export function readLegacy(
-  fees: Fees,
-  recent: RecentBlockhashes,
-  history: SlotHistory,
-  restart: LastRestartSlot,
-  rewards: EpochRewards,
-): u64 {
-  return fees.lamportsPerSignature + recent.bytes + history.bytes + restart.slot + rewards.bytes;
+export function note(text: string): void {
+  log(text);
+}
+
+export function spinSkip(
+  counter: Account<Counter, { mut: true }>,
+  times: u64,
+): void {
+  for (let i: u64 = 0n; i < times; i = i + 1n) {
+    if (i === 5n) {
+      continue;
+    }
+    counter.count = counter.count + 1n;
+  }
 }
 
 export function acceptEd25519(

@@ -48,7 +48,7 @@ export function compile(input: CompileInput): CompileResult {
   return {
     ok: diag.ok,
     diagnostics: diag.items,
-    rust: diag.ok ? rust : rust,
+    rust: diag.ok ? rust : "",
     idl,
     client,
     sourceMap,

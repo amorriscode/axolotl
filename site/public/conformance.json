@@ -1,9 +1,9 @@
 {
   "generated": "2026-10-29",
-  "passed": 54,
+  "passed": 50,
   "failed": 0,
   "unsupported": 0,
-  "total": 54,
+  "total": 50,
   "passRate": 100,
   "anchor": "1.2.2",
   "solana": "4.1.2",
@@ -27,6 +27,13 @@
       "id": "token.vault",
       "group": "Tokens",
       "feature": "SPL Token transfer_checked, including a PDA signer",
+      "status": "pass",
+      "detail": "examples/token-vault"
+    },
+    {
+      "id": "token.vault-owner",
+      "group": "Tokens",
+      "feature": "token::authority rejects the wrong destination",
       "status": "pass",
       "detail": "examples/token-vault"
     },
@@ -129,18 +136,11 @@
       "detail": "conformance"
     },
     {
-      "id": "accounts.init-if-needed",
-      "group": "Accounts",
-      "feature": "init_if_needed",
+      "id": "control.for-continue",
+      "group": "Language",
+      "feature": "continue inside for runs the increment",
       "status": "pass",
-      "detail": "conformance"
-    },
-    {
-      "id": "runtime.compute",
-      "group": "Runtime",
-      "feature": "Compute budget",
-      "status": "pass",
-      "detail": "conformance"
+      "detail": "Ten iterations, skip one, counter ends at 9."
     },
     {
       "id": "idl.match",
@@ -192,13 +192,6 @@
       "detail": "conformance"
     },
     {
-      "id": "accounts.zero-copy",
-      "group": "Accounts",
-      "feature": "Zero-copy AccountLoader",
-      "status": "pass",
-      "detail": "conformance"
-    },
-    {
       "id": "accounts.realloc",
       "group": "Accounts",
       "feature": "realloc",
@@ -208,7 +201,7 @@
     {
       "id": "sysvar.other",
       "group": "Sysvars",
-      "feature": "EpochSchedule, Instructions, SlotHashes, and StakeHistory",
+      "feature": "EpochSchedule and the instructions sysvar",
       "status": "pass",
       "detail": "conformance"
     },
@@ -216,13 +209,6 @@
       "id": "tokens.ata",
       "group": "Tokens",
       "feature": "Associated token account creation inside the program",
-      "status": "pass",
-      "detail": "conformance"
-    },
-    {
-      "id": "tokens.extensions",
-      "group": "Tokens",
-      "feature": "Token-2022 transfer-fee extension",
       "status": "pass",
       "detail": "conformance"
     },
@@ -246,13 +232,6 @@
       "feature": "Multiple PDA signers in one CPI",
       "status": "pass",
       "detail": "conformance"
-    },
-    {
-      "id": "runtime.lookup",
-      "group": "Runtime",
-      "feature": "Address lookup tables",
-      "status": "pass",
-      "detail": "A v0 transaction loads the counter through a table created in a previous slot."
     },
     {
       "id": "types.u128",
@@ -339,18 +318,11 @@
       "detail": "Discriminated unions lower to Anchor enums with fields."
     },
     {
-      "id": "sysvar.history",
-      "group": "Sysvars",
-      "feature": "Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards",
-      "status": "pass",
-      "detail": "Read from the accounts Agave 4.1 still exposes. Values are compared with LiteSVM."
-    },
-    {
       "id": "crypto.ed25519",
       "group": "Runtime",
       "feature": "ed25519 precompile via the instructions sysvar",
       "status": "pass",
-      "detail": "conformance"
+      "detail": "Indexes other than this instruction do not count, even when the bytes are present."
     },
     {
       "id": "crypto.secp256k1",

@@ -38,15 +38,15 @@ export function deposit(
     mut: true;
     seeds: ["vault", { account: "mint" }, { account: "authority" }];
     bump: true;
+    hasOne: ["authority"];
   }>,
   authority: Signer,
   mint: Mint,
-  ownerToken: Account<TokenAccount, { mut: true }>,
-  vaultToken: Account<TokenAccount, { mut: true }>,
+  ownerToken: Account<TokenAccount, { mut: true; tokenMint: "mint"; tokenAuthority: "authority" }>,
+  vaultToken: Account<TokenAccount, { mut: true; tokenMint: "mint"; tokenAuthority: "vault" }>,
   tokenProgram: TokenProgram,
   amount: u64,
 ): void {
-  require(authority.key === vault.authority, "Unauthorized");
   token.transferChecked({
     from: ownerToken,
     to: vaultToken,
@@ -62,15 +62,15 @@ export function withdraw(
     mut: true;
     seeds: ["vault", { account: "mint" }, { account: "authority" }];
     bump: true;
+    hasOne: ["authority"];
   }>,
   authority: Signer,
   mint: Mint,
-  ownerToken: Account<TokenAccount, { mut: true }>,
-  vaultToken: Account<TokenAccount, { mut: true }>,
+  ownerToken: Account<TokenAccount, { mut: true; tokenMint: "mint"; tokenAuthority: "authority" }>,
+  vaultToken: Account<TokenAccount, { mut: true; tokenMint: "mint"; tokenAuthority: "vault" }>,
   tokenProgram: TokenProgram,
   amount: u64,
 ): void {
-  require(authority.key === vault.authority, "Unauthorized");
   require(amount <= vault.deposited, "Insufficient funds");
   token.transferChecked({
     from: vaultToken,

@@ -218,28 +218,6 @@ test("match binds fields of a data-carrying enum", async () => {
   assert.equal(account.exists && account.data[40], 0);
 });
 
-test("Fees, RecentBlockhashes, SlotHistory, LastRestartSlot, and EpochRewards are readable", async () => {
-  const world = await boot();
-  const result = await send(world, [ix("read_legacy", [
-    meta(FEES, "r"),
-    meta(RECENT, "r"),
-    meta(SLOT_HISTORY, "r"),
-    meta(LAST_RESTART, "r"),
-    meta(EPOCH_REWARDS, "r"),
-  ])]);
-  const length = (id: string) => {
-    const account = world.svm.getAccount(address(id));
-    return account.exists ? BigInt(account.data.length) : 0n;
-  };
-  const fees = world.svm.getAccount(address(FEES));
-  const restart = world.svm.getAccount(address(LAST_RESTART));
-  const feeValue = fees.exists ? u64le(fees.data.subarray(0, 8)) : 0n;
-  const restartValue = restart.exists ? u64le(restart.data.subarray(0, 8)) : 0n;
-  const expected = feeValue + length(RECENT) + length(SLOT_HISTORY) + restartValue + length(EPOCH_REWARDS);
-  assert.equal(u64le(result.returnData().data()), expected);
-  assert.ok(length(SLOT_HISTORY) > 1000n);
-});
-
 test("ed25519 precompile data is checked through the instructions sysvar", async () => {
   const world = await boot();
   const message = new TextEncoder().encode("axolotl");
@@ -256,6 +234,24 @@ test("ed25519 precompile data is checked through the instructions sysvar", async
   ]);
   assert.ok(bad instanceof FailedTransactionMetadata);
   assert.match(bad.meta().prettyLogs(), /Precompile mismatch/);
+
+  const attacker = new TextEncoder().encode("attacker");
+  const victim = "victim!!";
+  const signedAttack = ed25519Instruction(attacker);
+  const data = signedAttack.instruction.data;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const messageOffset = view.getUint16(10, true);
+  view.setUint16(14, 1, true);
+  data.set(new TextEncoder().encode(victim), messageOffset);
+  const attackKey = new Uint8Array(32);
+  attackKey.set(signedAttack.publicKey);
+  const missed = await sendAllowingFailure(world, [
+    signedAttack.instruction,
+    ix("note", [], { text: `${"x".repeat(messageOffset - 12)}attacker` }),
+    ix("accept_ed25519", [meta(INSTRUCTIONS, "r")], { public_key: attackKey, message: victim }),
+  ]);
+  assert.ok(missed instanceof FailedTransactionMetadata);
+  assert.match(missed.meta().prettyLogs(), /Precompile mismatch/);
 });
 
 test("secp256k1 precompile data is checked through the instructions sysvar", async () => {

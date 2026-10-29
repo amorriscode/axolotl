@@ -21,32 +21,158 @@ pub mod relay {
 
 #[derive(Accounts)]
 pub struct Relay<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     pub echo_program: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(mut)]
     pub data: UncheckedAccount<'info>,
+}
+
+#[error_code]
+pub enum AxolotlError {
+    #[msg("Account or return data is shorter than the read")]
+    AccountTooSmall,
 }
 
 #[allow(dead_code)]
 mod ax_codec {
     use super::*;
     pub fn push_u8(data: &mut Vec<u8>, value: u8) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_u8(data: &[u8]) -> Result<u8> {
+        let bytes = data.get(..1).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 1] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u8::from_le_bytes(buf))
+    }
     pub fn push_u16(data: &mut Vec<u8>, value: u16) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_u16(data: &[u8]) -> Result<u16> {
+        let bytes = data.get(..2).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 2] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u16::from_le_bytes(buf))
+    }
     pub fn push_u32(data: &mut Vec<u8>, value: u32) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_u32(data: &[u8]) -> Result<u32> {
+        let bytes = data.get(..4).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 4] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u32::from_le_bytes(buf))
+    }
     pub fn push_u64(data: &mut Vec<u8>, value: u64) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_u64(data: &[u8]) -> Result<u64> {
+        let bytes = data.get(..8).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 8] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u64::from_le_bytes(buf))
+    }
     pub fn push_u128(data: &mut Vec<u8>, value: u128) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_u128(data: &[u8]) -> Result<u128> {
+        let bytes = data.get(..16).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 16] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u128::from_le_bytes(buf))
+    }
     pub fn push_i8(data: &mut Vec<u8>, value: i8) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_i8(data: &[u8]) -> Result<i8> {
+        let bytes = data.get(..1).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 1] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i8::from_le_bytes(buf))
+    }
     pub fn push_i16(data: &mut Vec<u8>, value: i16) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_i16(data: &[u8]) -> Result<i16> {
+        let bytes = data.get(..2).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 2] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i16::from_le_bytes(buf))
+    }
     pub fn push_i32(data: &mut Vec<u8>, value: i32) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_i32(data: &[u8]) -> Result<i32> {
+        let bytes = data.get(..4).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 4] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i32::from_le_bytes(buf))
+    }
     pub fn push_i64(data: &mut Vec<u8>, value: i64) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_i64(data: &[u8]) -> Result<i64> {
+        let bytes = data.get(..8).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 8] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i64::from_le_bytes(buf))
+    }
     pub fn push_i128(data: &mut Vec<u8>, value: i128) { data.extend_from_slice(&value.to_le_bytes()); }
+    pub fn read_i128(data: &[u8]) -> Result<i128> {
+        let bytes = data.get(..16).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 16] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i128::from_le_bytes(buf))
+    }
     pub fn push_bool(data: &mut Vec<u8>, value: bool) { data.push(u8::from(value)); }
+    pub fn read_bool(data: &[u8]) -> Result<bool> {
+        let byte = *data.first().ok_or(AxolotlError::AccountTooSmall)?;
+        Ok(byte != 0)
+    }
     pub fn push_string(data: &mut Vec<u8>, value: &str) {
         data.extend_from_slice(&(value.len() as u32).to_le_bytes());
         data.extend_from_slice(value.as_bytes());
     }
+    pub fn read_string(data: &[u8]) -> Result<String> {
+        if data.len() < 4 { return Err(AxolotlError::AccountTooSmall.into()); }
+        let len = u32::from_le_bytes(data[..4].try_into().map_err(|_| AxolotlError::AccountTooSmall)?) as usize;
+        let bytes = data.get(4..4 + len).ok_or(AxolotlError::AccountTooSmall)?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| AxolotlError::AccountTooSmall.into())
+    }
     pub fn push_pubkey(data: &mut Vec<u8>, value: Pubkey) { data.extend_from_slice(value.as_ref()); }
+    pub fn read_pubkey(data: &[u8]) -> Result<Pubkey> {
+        let bytes = data.get(..32).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 32] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(Pubkey::new_from_array(buf))
+    }
     pub fn push_bytes32(data: &mut Vec<u8>, value: &[u8; 32]) { data.extend_from_slice(value); }
+    pub fn read_bytes32(data: &[u8]) -> Result<[u8; 32]> {
+        let bytes = data.get(..32).ok_or(AxolotlError::AccountTooSmall)?;
+        bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall.into())
+    }
+    pub fn instruction_at(ix: &AccountInfo, index: usize) -> Result<(Pubkey, Vec<u8>)> {
+        let data = ix.try_borrow_data()?;
+        if data.len() < 2 { return Err(ProgramError::InvalidInstructionData.into()); }
+        let count = u16::from_le_bytes([data[0], data[1]]) as usize;
+        if index >= count || 2 + index * 2 + 2 > data.len() { return Err(ProgramError::InvalidArgument.into()); }
+        let start = u16::from_le_bytes([data[2 + index * 2], data[3 + index * 2]]) as usize;
+        if start + 2 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+        let accounts = u16::from_le_bytes([data[start], data[start + 1]]) as usize;
+        let mut cursor = start + 2;
+        for _ in 0..accounts {
+            if cursor + 33 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+            cursor += 33;
+        }
+        if cursor + 34 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+        let program_bytes = data.get(cursor..cursor + 32).ok_or(ProgramError::InvalidInstructionData)?;
+        let program_id: [u8; 32] = program_bytes.try_into().map_err(|_| ProgramError::InvalidInstructionData)?;
+        cursor += 32;
+        let len = u16::from_le_bytes([data[cursor], data[cursor + 1]]) as usize;
+        cursor += 2;
+        if cursor + len > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
+        Ok((Pubkey::new_from_array(program_id), data[cursor..cursor + len].to_vec()))
+    }
+    pub fn check_ed25519(ix: &AccountInfo, index: usize, pubkey: &[u8; 32], message: &[u8]) -> Result<bool> {
+        let (program_id, data) = instruction_at(ix, index)?;
+        let ed = pubkey!("Ed25519SigVerify111111111111111111111111111");
+        if program_id != ed || data.len() < 16 || data[0] != 1 { return Ok(false); }
+        let pk_ix = u16::from_le_bytes([data[8], data[9]]);
+        let msg_ix = u16::from_le_bytes([data[14], data[15]]);
+        if pk_ix != u16::MAX || msg_ix != u16::MAX { return Ok(false); }
+        let pk_off = u16::from_le_bytes([data[6], data[7]]) as usize;
+        let msg_off = u16::from_le_bytes([data[10], data[11]]) as usize;
+        let msg_len = u16::from_le_bytes([data[12], data[13]]) as usize;
+        let pk = data.get(pk_off..pk_off + 32);
+        let msg = data.get(msg_off..msg_off + msg_len);
+        Ok(pk == Some(pubkey.as_ref()) && msg == Some(message))
+    }
+    pub fn check_secp256k1(ix: &AccountInfo, index: usize, address: &[u8; 32], message: &[u8]) -> Result<bool> {
+        let (program_id, data) = instruction_at(ix, index)?;
+        let secp = pubkey!("KeccakSecp256k11111111111111111111111111111");
+        if program_id != secp || data.len() < 12 || data[0] != 1 { return Ok(false); }
+        let eth_ix = data[6];
+        let msg_ix = data[11];
+        let eth_off = u16::from_le_bytes([data[4], data[5]]) as usize;
+        let msg_off = u16::from_le_bytes([data[7], data[8]]) as usize;
+        let msg_len = u16::from_le_bytes([data[9], data[10]]) as usize;
+        let eth_src = if eth_ix == 0xff { data.clone() } else { instruction_at(ix, eth_ix as usize)?.1 };
+        let msg_src = if msg_ix == 0xff { data.clone() } else { instruction_at(ix, msg_ix as usize)?.1 };
+        let eth = eth_src.get(eth_off..eth_off + 20);
+        let msg = msg_src.get(msg_off..msg_off + msg_len);
+        Ok(eth == Some(&address[..20]) && msg == Some(message))
+    }
 }
 

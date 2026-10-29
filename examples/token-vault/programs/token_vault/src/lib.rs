@@ -19,7 +19,6 @@ pub mod token_vault {
     }
 
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
-        require!((ctx.accounts.authority.key() == ctx.accounts.vault.authority), AxolotlError::Unauthorized);
         anchor_spl::token_interface::transfer_checked(CpiContext::new(ctx.accounts.token_program.key(), anchor_spl::token_interface::TransferChecked { from: ctx.accounts.owner_token.to_account_info(), mint: ctx.accounts.mint.to_account_info(), to: ctx.accounts.vault_token.to_account_info(), authority: ctx.accounts.authority.to_account_info() }), amount, ctx.accounts.mint.decimals)?;
         let __ax_1 = ctx.accounts.vault.deposited.checked_add(amount).ok_or(AxolotlError::ArithmeticOverflow)?;
         ctx.accounts.vault.deposited = __ax_1;
@@ -27,7 +26,6 @@ pub mod token_vault {
     }
 
     pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
-        require!((ctx.accounts.authority.key() == ctx.accounts.vault.authority), AxolotlError::Unauthorized);
         require!((amount <= ctx.accounts.vault.deposited), AxolotlError::InsufficientFunds);
         let __ax_1 = ctx.accounts.mint.key();
         let __ax_2 = ctx.accounts.authority.key();
@@ -63,34 +61,32 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct Deposit<'info> {
-    #[account(mut, seeds = [b"vault", mint.key().as_ref(), authority.key().as_ref()], bump = vault.bump)]
+    #[account(mut, seeds = [b"vault", mint.key().as_ref(), authority.key().as_ref()], bump = vault.bump, has_one = authority)]
     pub vault: Account<'info, Vault>,
     pub authority: Signer<'info>,
     pub mint: InterfaceAccount<'info, Mint>,
-    #[account(mut)]
+    #[account(mut, token::mint = mint, token::authority = authority)]
     pub owner_token: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, token::mint = mint, token::authority = vault)]
     pub vault_token: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
-    #[account(mut, seeds = [b"vault", mint.key().as_ref(), authority.key().as_ref()], bump = vault.bump)]
+    #[account(mut, seeds = [b"vault", mint.key().as_ref(), authority.key().as_ref()], bump = vault.bump, has_one = authority)]
     pub vault: Account<'info, Vault>,
     pub authority: Signer<'info>,
     pub mint: InterfaceAccount<'info, Mint>,
-    #[account(mut)]
+    #[account(mut, token::mint = mint, token::authority = authority)]
     pub owner_token: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut)]
+    #[account(mut, token::mint = mint, token::authority = vault)]
     pub vault_token: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[error_code]
 pub enum AxolotlError {
-    #[msg("Unauthorized")]
-    Unauthorized,
     #[msg("Insufficient funds")]
     InsufficientFunds,
     #[msg("Arithmetic overflow or division by zero")]

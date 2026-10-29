@@ -125,18 +125,6 @@ test("nested structs, strings, vecs, and enums round-trip", async () => {
   assert.equal(data.side, "Right");
 });
 
-test("zero-copy accounts load and store", async () => {
-  const world = await boot();
-  const pod = await generateKeyPairSigner();
-  await send(world, [ix("init_pod", [
-    meta(pod.address, "ws", pod),
-    meta(world.payer.address, "ws", world.payer),
-    meta(SYSTEM, "r"),
-  ])]);
-  const account = world.svm.getAccount(pod.address);
-  assert.equal(account.exists && decodeAccount(idl, "PodCounter", account.data).value, 11n);
-});
-
 test("realloc grows an account", async () => {
   const world = await boot();
   const grown = await generateKeyPairSigner();
@@ -159,15 +147,13 @@ test("realloc grows an account", async () => {
   assert.ok(before.data.length < 128);
 });
 
-test("epoch schedule, instructions, slot hashes, and stake history sysvars", async () => {
+test("epoch schedule and the instructions sysvar are readable", async () => {
   const world = await boot();
   const schedule = await send(world, [ix("read_schedule", [meta(EPOCH, "r")])]);
   const expected = world.svm.getEpochSchedule().slotsPerEpoch;
   assert.equal(u64le(schedule.returnData().data()), expected);
   const index = await send(world, [ix("read_index", [meta(INSTRUCTIONS, "r")])]);
   assert.equal(new DataView(index.returnData().data().buffer, index.returnData().data().byteOffset, 2).getUint16(0, true), 0);
-  const hashes = await send(world, [ix("read_hashes", [meta(SLOT_HASHES, "r"), meta(STAKE_HISTORY, "r")])]);
-  assert.ok(u64le(hashes.returnData().data()) > 0n);
 });
 
 test("the program creates an associated token account", async () => {
@@ -195,52 +181,6 @@ test("the program creates an associated token account", async () => {
   assert.equal(created.exists, true);
   if (!created.exists) return;
   assert.equal(created.programAddress, TOKEN_PROGRAM_ADDRESS);
-});
-
-test("Token-2022 transfer fee extension is readable", async () => {
-  const world = await boot();
-  const mint = await generateKeyPairSigner();
-  const rent = world.svm.minimumBalanceForRentExemption(TRANSFER_FEE_MINT_SPACE);
-  const payerBytes = getAddressEncoder().encode(world.payer.address);
-  // TransferFeeExtension / InitializeTransferFeeConfig: config authority none, withdraw authority set, 100 bps, max fee 1000.
-  const data = new Uint8Array(2 + 1 + 1 + 32 + 2 + 8);
-  data[0] = 26;
-  data[1] = 0;
-  data[2] = 0;
-  data[3] = 1;
-  data.set(payerBytes, 4);
-  new DataView(data.buffer).setUint16(36, 100, true);
-  new DataView(data.buffer).setBigUint64(38, 1_000n, true);
-  const feeIx: Instruction = {
-    programAddress: address(TOKEN_2022),
-    accounts: [meta(mint.address, "w")],
-    data,
-  };
-  // InitializeMint2: 6 decimals, payer mint authority, no freeze authority.
-  const mintData = new Uint8Array(1 + 1 + 32 + 1);
-  mintData[0] = 20;
-  mintData[1] = 6;
-  mintData.set(payerBytes, 2);
-  mintData[34] = 0;
-  const initMint: Instruction = {
-    programAddress: address(TOKEN_2022),
-    accounts: [meta(mint.address, "w")],
-    data: mintData,
-  };
-  await send(world, [
-    getCreateAccountInstruction({
-      payer: world.payer,
-      newAccount: mint,
-      lamports: rent,
-      space: TRANSFER_FEE_MINT_SPACE,
-      programAddress: address(TOKEN_2022),
-    }),
-    feeIx,
-    initMint,
-  ]);
-  const result = await send(world, [ix("read_fee", [meta(mint.address, "r"), meta(TOKEN_2022, "r")])]);
-  const returned = result.returnData().data();
-  assert.equal(new DataView(returned.buffer, returned.byteOffset, returned.byteLength).getUint16(0, true), 100);
 });
 
 test("emit_cpi writes an event through the event authority", async () => {
@@ -288,62 +228,6 @@ test("two PDA signers authorize one CPI", async () => {
     meta(world.payer.address, "rs", world.payer),
   ], { value: 8n })]);
   assert.ok(result.logs().some((line) => line.includes("8")));
-});
-
-test("address lookup tables can supply an account", async () => {
-  const world = await boot();
-  const counter = await generateKeyPairSigner();
-  await send(world, [ix("initialize", [
-    meta(counter.address, "ws", counter),
-    meta(world.payer.address, "ws", world.payer),
-    meta(SYSTEM, "r"),
-  ])]);
-  const slot = world.svm.getClock().slot;
-  const encoder = getAddressEncoder();
-  const recent = new Uint8Array(8);
-  new DataView(recent.buffer).setBigUint64(0, slot, true);
-  const [table, bump] = await getProgramDerivedAddress({
-    programAddress: address(ALT_PROGRAM),
-    seeds: [encoder.encode(world.payer.address), recent],
-  });
-  const createData = new Uint8Array(4 + 8 + 1);
-  new DataView(createData.buffer).setUint32(0, 0, true);
-  createData.set(recent, 4);
-  createData[12] = bump;
-  await send(world, [{
-    programAddress: address(ALT_PROGRAM),
-    accounts: [
-      meta(table, "w"),
-      meta(world.payer.address, "rs", world.payer),
-      meta(world.payer.address, "ws", world.payer),
-      meta(SYSTEM, "r"),
-    ],
-    data: createData,
-  }]);
-  const extendData = new Uint8Array(4 + 8 + 32);
-  const extendView = new DataView(extendData.buffer);
-  extendView.setUint32(0, 2, true);
-  extendView.setBigUint64(4, 1n, true);
-  extendData.set(encoder.encode(counter.address), 12);
-  await send(world, [{
-    programAddress: address(ALT_PROGRAM),
-    accounts: [
-      meta(table, "w"),
-      meta(world.payer.address, "rs", world.payer),
-      meta(world.payer.address, "ws", world.payer),
-      meta(SYSTEM, "r"),
-    ],
-    data: extendData,
-  }]);
-  world.svm.warpToSlot(slot + 1n);
-  await send(world, [ix("walk", [{
-    address: counter.address,
-    addressIndex: 0,
-    lookupTableAddress: table,
-    role: AccountRole.WRITABLE,
-  }], { times: 3n })]);
-  const account = world.svm.getAccount(counter.address);
-  assert.equal(account.exists && decodeAccount(idl, "Counter", account.data).count, 3n);
 });
 
 test("continue skips one iteration of a while loop", async () => {

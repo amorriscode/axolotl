@@ -31,6 +31,10 @@ export class Diagnostics {
     this.error(loc.file, loc.line, loc.column, message);
   }
 
+  warn(file: string, line: number, column: number, message: string): void {
+    this.items.push({ severity: "warning", file, line, column, message });
+  }
+
   warnAt(sf: ts.SourceFile, node: ts.Node, message: string): void {
     const loc = locOf(sf, node);
     this.items.push({ severity: "warning", file: loc.file, line: loc.line, column: loc.column, message });

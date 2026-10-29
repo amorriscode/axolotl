@@ -33,7 +33,6 @@ export function add(
   authority: Signer,
   amount: u64,
 ): void {
-  require(authority.key === counter.authority, "Unauthorized");
   require(amount > 0n, "Amount must be positive");
   counter.count = counter.count + amount;
 }

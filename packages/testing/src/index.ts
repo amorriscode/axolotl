@@ -90,9 +90,7 @@ export function instruction(programId: string, accounts: ReturnType<typeof meta>
 export async function send(
   world: TestWorld,
   instructions: Instruction[],
-  extraSigners: KeyPairSigner[] = [],
 ): Promise<TransactionMetadata> {
-  void extraSigners;
   const message = await pipe(
     createTransactionMessage({ version: 0 }),
     (tx) => setTransactionMessageFeePayerSigner(world.payer, tx),

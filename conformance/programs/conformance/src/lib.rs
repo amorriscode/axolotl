@@ -149,8 +149,8 @@ pub mod conformance {
 
     pub fn bump_optional(ctx: Context<BumpOptional>) -> Result<()> {
         if ctx.accounts.counter.is_some() {
-            let __ax_1 = ctx.accounts.counter.as_mut().unwrap().count.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
-            ctx.accounts.counter.as_mut().unwrap().count = __ax_1;
+            let __ax_1 = ctx.accounts.counter.as_mut().ok_or(AxolotlError::MissingAccount)?.count.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
+            ctx.accounts.counter.as_mut().ok_or(AxolotlError::MissingAccount)?.count = __ax_1;
         }
         Ok(())
     }
@@ -164,29 +164,27 @@ pub mod conformance {
         ctx.accounts.shape.point.x = __ax_1;
         let __ax_2 = 4u64;
         ctx.accounts.shape.point.y = __ax_2;
+        if "nest".to_string().len() > 8 { return Err(AxolotlError::StringTooLong.into()); }
         let __ax_3 = "nest".to_string();
         ctx.accounts.shape.label = __ax_3;
         let __ax_4 = Side::Right;
         ctx.accounts.shape.side = __ax_4;
+        if ctx.accounts.shape.samples.len() >= 4 { return Err(AxolotlError::VecFull.into()); }
         ctx.accounts.shape.samples.push(9u64);
-        Ok(())
-    }
-
-    pub fn init_pod(ctx: Context<InitPod>) -> Result<()> {
-        let __ax_1 = 11u64;
-        (*ctx.accounts.pod.load_init()?).value = __ax_1;
         Ok(())
     }
 
     pub fn init_grown(ctx: Context<InitGrown>) -> Result<()> {
         let __ax_1 = ctx.accounts.authority.key();
         ctx.accounts.grown.authority = __ax_1;
+        if "a".to_string().len() > 16 { return Err(AxolotlError::StringTooLong.into()); }
         let __ax_2 = "a".to_string();
         ctx.accounts.grown.note = __ax_2;
         Ok(())
     }
 
     pub fn grow(ctx: Context<Grow>) -> Result<()> {
+        if "bigger".to_string().len() > 16 { return Err(AxolotlError::StringTooLong.into()); }
         let __ax_1 = "bigger".to_string();
         ctx.accounts.grown.note = __ax_1;
         Ok(())
@@ -200,17 +198,9 @@ pub mod conformance {
         return Ok({ let __ax_info = ctx.accounts.instructions.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; let __ax_len = __ax_data.len(); u16::from_le_bytes([__ax_data[__ax_len - 2], __ax_data[__ax_len - 1]]) });
     }
 
-    pub fn read_hashes(ctx: Context<ReadHashes>) -> Result<u64> {
-        return Ok((ctx.accounts.slot_hashes.to_account_info().data_len() as u64).checked_add((ctx.accounts.stake_history.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?);
-    }
-
     pub fn open_ata(ctx: Context<OpenAta>) -> Result<()> {
         anchor_spl::associated_token::create(CpiContext::new(anchor_spl::associated_token::ID, anchor_spl::associated_token::Create { payer: ctx.accounts.payer.to_account_info(), associated_token: ctx.accounts.ata.to_account_info(), authority: ctx.accounts.owner.to_account_info(), mint: ctx.accounts.mint.to_account_info(), system_program: ctx.accounts.system_program.to_account_info(), token_program: ctx.accounts.token_program.to_account_info() }))?;
         Ok(())
-    }
-
-    pub fn read_fee(ctx: Context<ReadFee>) -> Result<u16> {
-        return Ok(ax_codec::transfer_fee_bps(&ctx.accounts.mint.to_account_info())?);
     }
 
     pub fn ping_cpi(ctx: Context<PingCpi>, message: String) -> Result<()> {
@@ -224,8 +214,9 @@ pub mod conformance {
         ax_codec::push_u64(&mut __ax_data, value);
         let __ax_ix = anchor_lang::solana_program::instruction::Instruction { program_id: ctx.accounts.echo_program.key(), accounts: vec![], data: __ax_data };
         anchor_lang::solana_program::program::invoke(&__ax_ix, &[])?;
-        let __ax_1 = anchor_lang::solana_program::program::get_return_data().map(|(_key, data)| data).unwrap_or_default();
-        return Ok(ax_codec::read_u64(&__ax_1));
+        let (__ax_1_pid, __ax_1) = anchor_lang::solana_program::program::get_return_data().ok_or(AxolotlError::NoReturnData)?;
+        if __ax_1_pid != ctx.accounts.echo_program.key() { return Err(AxolotlError::WrongReturnProgram.into()); }
+        return Ok(ax_codec::read_u64(&__ax_1)?);
     }
 
     pub fn fanout(ctx: Context<Fanout>, value: u64) -> Result<()> {
@@ -293,17 +284,6 @@ pub mod conformance {
         Ok(())
     }
 
-    pub fn reopen(ctx: Context<Reopen>) -> Result<()> {
-        ctx.accounts.counter.bump = ctx.bumps.counter;
-        if (ctx.accounts.counter.count == 0u64) {
-            let __ax_1 = ctx.accounts.authority.key();
-            ctx.accounts.counter.authority = __ax_1;
-        }
-        let __ax_2 = ctx.accounts.counter.count.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
-        ctx.accounts.counter.count = __ax_2;
-        Ok(())
-    }
-
     pub fn gated(ctx: Context<Gated>) -> Result<()> {
         let __ax_1 = ctx.accounts.counter.count.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
         ctx.accounts.counter.count = __ax_1;
@@ -358,8 +338,25 @@ pub mod conformance {
         Ok(())
     }
 
-    pub fn read_legacy(ctx: Context<ReadLegacy>) -> Result<u64> {
-        return Ok({ let __ax_info = ctx.accounts.fees.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; u64::from_le_bytes([__ax_data[0], __ax_data[1], __ax_data[2], __ax_data[3], __ax_data[4], __ax_data[5], __ax_data[6], __ax_data[7]]) }.checked_add((ctx.accounts.recent.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?.checked_add((ctx.accounts.history.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?.checked_add({ let __ax_info = ctx.accounts.restart.to_account_info(); let __ax_data = __ax_info.try_borrow_data()?; u64::from_le_bytes([__ax_data[0], __ax_data[1], __ax_data[2], __ax_data[3], __ax_data[4], __ax_data[5], __ax_data[6], __ax_data[7]]) }).ok_or(AxolotlError::ArithmeticOverflow)?.checked_add((ctx.accounts.rewards.to_account_info().data_len() as u64)).ok_or(AxolotlError::ArithmeticOverflow)?);
+    pub fn note(ctx: Context<Note>, text: String) -> Result<()> {
+        msg!("{}", text);
+        Ok(())
+    }
+
+    pub fn spin_skip(ctx: Context<SpinSkip>, times: u64) -> Result<()> {
+        {
+            let mut i: u64 = 0u64;
+            while i < times {
+                if (i == 5u64) {
+                    i = i.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
+                    continue;
+                }
+                let __ax_1 = ctx.accounts.counter.count.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
+                ctx.accounts.counter.count = __ax_1;
+                i = i.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn accept_ed25519(ctx: Context<AcceptEd25519>, public_key: [u8; 32], message: String) -> Result<()> {
@@ -467,14 +464,6 @@ pub struct Shape {
 }
 impl Shape {
     pub const INIT_SPACE: usize = 65;
-}
-
-#[account(zero_copy)]
-pub struct PodCounter {
-    pub value: u64,
-}
-impl PodCounter {
-    pub const INIT_SPACE: usize = std::mem::size_of::<PodCounter>();
 }
 
 #[account]
@@ -614,15 +603,6 @@ pub struct InitShape<'info> {
 }
 
 #[derive(Accounts)]
-pub struct InitPod<'info> {
-    #[account(init, payer = authority, space = 8 + PodCounter::INIT_SPACE)]
-    pub pod: AccountLoader<'info, PodCounter>,
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
 pub struct InitGrown<'info> {
     #[account(init, payer = authority, space = 8 + Grown::INIT_SPACE)]
     pub grown: Account<'info, Grown>,
@@ -647,41 +627,25 @@ pub struct ReadSchedule<'info> {
 
 #[derive(Accounts)]
 pub struct ReadIndex<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: Pinned to Sysvar1nstructions1111111111111111111111111. The owner is not checked beyond that address.
     #[account(address = pubkey!("Sysvar1nstructions1111111111111111111111111"))]
     pub instructions: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ReadHashes<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    #[account(address = pubkey!("SysvarS1otHashes111111111111111111111111111"))]
-    pub slot_hashes: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    #[account(address = pubkey!("SysvarStakeHistory1111111111111111111111111"))]
-    pub stake_history: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct OpenAta<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(mut)]
     pub ata: UncheckedAccount<'info>,
     pub owner: Signer<'info>,
     pub mint: InterfaceAccount<'info, Mint>,
     pub system_program: Program<'info, System>,
     pub token_program: Interface<'info, TokenInterface>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: Pinned to ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL. The owner is not checked beyond that address.
     #[account(address = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"))]
     pub associated_token_program: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ReadFee<'info> {
-    pub mint: InterfaceAccount<'info, Mint>,
-    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[event_cpi]
@@ -692,18 +656,18 @@ pub struct PingCpi<'info> {
 
 #[derive(Accounts)]
 pub struct AskEcho<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     pub echo_program: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct Fanout<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     pub echo_program: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(seeds = [b"left", user.key().as_ref()], bump)]
     pub left: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(seeds = [b"right", user.key().as_ref()], bump)]
     pub right: UncheckedAccount<'info>,
     pub user: Signer<'info>,
@@ -747,15 +711,6 @@ pub struct Add<'info> {
 }
 
 #[derive(Accounts)]
-pub struct Reopen<'info> {
-    #[account(init_if_needed, payer = authority, space = 8 + Counter::INIT_SPACE, seeds = [b"once"], bump)]
-    pub counter: Account<'info, Counter>,
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
 pub struct Gated<'info> {
     #[account(mut, constraint = (counter.count > 0u64))]
     pub counter: Account<'info, Counter>,
@@ -763,7 +718,7 @@ pub struct Gated<'info> {
 
 #[derive(Accounts)]
 pub struct CheckOwner<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(owner = token_program.key())]
     pub account: UncheckedAccount<'info>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -771,17 +726,17 @@ pub struct CheckOwner<'info> {
 
 #[derive(Accounts)]
 pub struct CheckAddress<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(address = pubkey!("11111111111111111111111111111111"))]
     pub account: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct CheckForeign<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(seeds = [b"mark"], bump, seeds::program = echo_program.key())]
     pub marker: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     pub echo_program: UncheckedAccount<'info>,
 }
 
@@ -801,36 +756,31 @@ pub struct Apply<'info> {
 }
 
 #[derive(Accounts)]
-pub struct ReadLegacy<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    pub fees: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    pub recent: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    pub history: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    pub restart: UncheckedAccount<'info>,
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
-    pub rewards: UncheckedAccount<'info>,
+pub struct Note {}
+
+#[derive(Accounts)]
+pub struct SpinSkip<'info> {
+    #[account(mut)]
+    pub counter: Account<'info, Counter>,
 }
 
 #[derive(Accounts)]
 pub struct AcceptEd25519<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: Pinned to Sysvar1nstructions1111111111111111111111111. The owner is not checked beyond that address.
     #[account(address = pubkey!("Sysvar1nstructions1111111111111111111111111"))]
     pub instructions: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct AcceptSecp256k1<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: Pinned to Sysvar1nstructions1111111111111111111111111. The owner is not checked beyond that address.
     #[account(address = pubkey!("Sysvar1nstructions1111111111111111111111111"))]
     pub instructions: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct CheckExecutable<'info> {
-    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.
+    /// CHECK: The program does not check this account's owner or discriminator.
     #[account(executable)]
     pub program: UncheckedAccount<'info>,
 }
@@ -866,6 +816,18 @@ pub enum AxolotlError {
     WrongWord,
     #[msg("Wrong key")]
     WrongKey,
+    #[msg("Optional account was read while absent")]
+    MissingAccount,
+    #[msg("String is longer than its Str<N> bound")]
+    StringTooLong,
+    #[msg("Vec is already at its maximum length")]
+    VecFull,
+    #[msg("CPI wrote no return data")]
+    NoReturnData,
+    #[msg("Return data came from a different program")]
+    WrongReturnProgram,
+    #[msg("Account or return data is shorter than the read")]
+    AccountTooSmall,
     #[msg("Precompile mismatch")]
     PrecompileMismatch,
     #[msg("Arithmetic overflow or division by zero")]
@@ -876,88 +838,90 @@ pub enum AxolotlError {
 mod ax_codec {
     use super::*;
     pub fn push_u8(data: &mut Vec<u8>, value: u8) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_u8(data: &[u8]) -> u8 {
-        let mut buf = [0u8; 1];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        u8::from_le_bytes(buf)
+    pub fn read_u8(data: &[u8]) -> Result<u8> {
+        let bytes = data.get(..1).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 1] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u8::from_le_bytes(buf))
     }
     pub fn push_u16(data: &mut Vec<u8>, value: u16) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_u16(data: &[u8]) -> u16 {
-        let mut buf = [0u8; 2];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        u16::from_le_bytes(buf)
+    pub fn read_u16(data: &[u8]) -> Result<u16> {
+        let bytes = data.get(..2).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 2] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u16::from_le_bytes(buf))
     }
     pub fn push_u32(data: &mut Vec<u8>, value: u32) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_u32(data: &[u8]) -> u32 {
-        let mut buf = [0u8; 4];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        u32::from_le_bytes(buf)
+    pub fn read_u32(data: &[u8]) -> Result<u32> {
+        let bytes = data.get(..4).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 4] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u32::from_le_bytes(buf))
     }
     pub fn push_u64(data: &mut Vec<u8>, value: u64) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_u64(data: &[u8]) -> u64 {
-        let mut buf = [0u8; 8];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        u64::from_le_bytes(buf)
+    pub fn read_u64(data: &[u8]) -> Result<u64> {
+        let bytes = data.get(..8).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 8] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u64::from_le_bytes(buf))
     }
     pub fn push_u128(data: &mut Vec<u8>, value: u128) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_u128(data: &[u8]) -> u128 {
-        let mut buf = [0u8; 16];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        u128::from_le_bytes(buf)
+    pub fn read_u128(data: &[u8]) -> Result<u128> {
+        let bytes = data.get(..16).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 16] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(u128::from_le_bytes(buf))
     }
     pub fn push_i8(data: &mut Vec<u8>, value: i8) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_i8(data: &[u8]) -> i8 {
-        let mut buf = [0u8; 1];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        i8::from_le_bytes(buf)
+    pub fn read_i8(data: &[u8]) -> Result<i8> {
+        let bytes = data.get(..1).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 1] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i8::from_le_bytes(buf))
     }
     pub fn push_i16(data: &mut Vec<u8>, value: i16) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_i16(data: &[u8]) -> i16 {
-        let mut buf = [0u8; 2];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        i16::from_le_bytes(buf)
+    pub fn read_i16(data: &[u8]) -> Result<i16> {
+        let bytes = data.get(..2).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 2] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i16::from_le_bytes(buf))
     }
     pub fn push_i32(data: &mut Vec<u8>, value: i32) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_i32(data: &[u8]) -> i32 {
-        let mut buf = [0u8; 4];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        i32::from_le_bytes(buf)
+    pub fn read_i32(data: &[u8]) -> Result<i32> {
+        let bytes = data.get(..4).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 4] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i32::from_le_bytes(buf))
     }
     pub fn push_i64(data: &mut Vec<u8>, value: i64) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_i64(data: &[u8]) -> i64 {
-        let mut buf = [0u8; 8];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        i64::from_le_bytes(buf)
+    pub fn read_i64(data: &[u8]) -> Result<i64> {
+        let bytes = data.get(..8).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 8] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i64::from_le_bytes(buf))
     }
     pub fn push_i128(data: &mut Vec<u8>, value: i128) { data.extend_from_slice(&value.to_le_bytes()); }
-    pub fn read_i128(data: &[u8]) -> i128 {
-        let mut buf = [0u8; 16];
-        let len = buf.len();
-        buf.copy_from_slice(&data[..len]);
-        i128::from_le_bytes(buf)
+    pub fn read_i128(data: &[u8]) -> Result<i128> {
+        let bytes = data.get(..16).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 16] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(i128::from_le_bytes(buf))
     }
     pub fn push_bool(data: &mut Vec<u8>, value: bool) { data.push(u8::from(value)); }
+    pub fn read_bool(data: &[u8]) -> Result<bool> {
+        let byte = *data.first().ok_or(AxolotlError::AccountTooSmall)?;
+        Ok(byte != 0)
+    }
     pub fn push_string(data: &mut Vec<u8>, value: &str) {
         data.extend_from_slice(&(value.len() as u32).to_le_bytes());
         data.extend_from_slice(value.as_bytes());
     }
+    pub fn read_string(data: &[u8]) -> Result<String> {
+        if data.len() < 4 { return Err(AxolotlError::AccountTooSmall.into()); }
+        let len = u32::from_le_bytes(data[..4].try_into().map_err(|_| AxolotlError::AccountTooSmall)?) as usize;
+        let bytes = data.get(4..4 + len).ok_or(AxolotlError::AccountTooSmall)?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| AxolotlError::AccountTooSmall.into())
+    }
     pub fn push_pubkey(data: &mut Vec<u8>, value: Pubkey) { data.extend_from_slice(value.as_ref()); }
+    pub fn read_pubkey(data: &[u8]) -> Result<Pubkey> {
+        let bytes = data.get(..32).ok_or(AxolotlError::AccountTooSmall)?;
+        let buf: [u8; 32] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;
+        Ok(Pubkey::new_from_array(buf))
+    }
     pub fn push_bytes32(data: &mut Vec<u8>, value: &[u8; 32]) { data.extend_from_slice(value); }
-    pub fn transfer_fee_bps(mint: &AccountInfo) -> Result<u16> {
-        use anchor_spl::token_2022::spl_token_2022::extension::BaseStateWithExtensions;
-        let data = mint.try_borrow_data()?;
-        let state = anchor_spl::token_2022::spl_token_2022::extension::StateWithExtensions::<anchor_spl::token_2022::spl_token_2022::state::Mint>::unpack(&data)?;
-        let config = state.get_extension::<anchor_spl::token_2022::spl_token_2022::extension::transfer_fee::TransferFeeConfig>()?;
-        Ok(u16::from(config.newer_transfer_fee.transfer_fee_basis_points))
+    pub fn read_bytes32(data: &[u8]) -> Result<[u8; 32]> {
+        let bytes = data.get(..32).ok_or(AxolotlError::AccountTooSmall)?;
+        bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall.into())
     }
     pub fn instruction_at(ix: &AccountInfo, index: usize) -> Result<(Pubkey, Vec<u8>)> {
         let data = ix.try_borrow_data()?;
@@ -973,8 +937,8 @@ mod ax_codec {
             cursor += 33;
         }
         if cursor + 34 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }
-        let mut program_id = [0u8; 32];
-        program_id.copy_from_slice(&data[cursor..cursor + 32]);
+        let program_bytes = data.get(cursor..cursor + 32).ok_or(ProgramError::InvalidInstructionData)?;
+        let program_id: [u8; 32] = program_bytes.try_into().map_err(|_| ProgramError::InvalidInstructionData)?;
         cursor += 32;
         let len = u16::from_le_bytes([data[cursor], data[cursor + 1]]) as usize;
         cursor += 2;
@@ -985,21 +949,30 @@ mod ax_codec {
         let (program_id, data) = instruction_at(ix, index)?;
         let ed = pubkey!("Ed25519SigVerify111111111111111111111111111");
         if program_id != ed || data.len() < 16 || data[0] != 1 { return Ok(false); }
+        let pk_ix = u16::from_le_bytes([data[8], data[9]]);
+        let msg_ix = u16::from_le_bytes([data[14], data[15]]);
+        if pk_ix != u16::MAX || msg_ix != u16::MAX { return Ok(false); }
         let pk_off = u16::from_le_bytes([data[6], data[7]]) as usize;
         let msg_off = u16::from_le_bytes([data[10], data[11]]) as usize;
         let msg_len = u16::from_le_bytes([data[12], data[13]]) as usize;
-        if pk_off.saturating_add(32) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }
-        Ok(&data[pk_off..pk_off + 32] == pubkey.as_ref() && &data[msg_off..msg_off + msg_len] == message)
+        let pk = data.get(pk_off..pk_off + 32);
+        let msg = data.get(msg_off..msg_off + msg_len);
+        Ok(pk == Some(pubkey.as_ref()) && msg == Some(message))
     }
     pub fn check_secp256k1(ix: &AccountInfo, index: usize, address: &[u8; 32], message: &[u8]) -> Result<bool> {
         let (program_id, data) = instruction_at(ix, index)?;
         let secp = pubkey!("KeccakSecp256k11111111111111111111111111111");
         if program_id != secp || data.len() < 12 || data[0] != 1 { return Ok(false); }
+        let eth_ix = data[6];
+        let msg_ix = data[11];
         let eth_off = u16::from_le_bytes([data[4], data[5]]) as usize;
         let msg_off = u16::from_le_bytes([data[7], data[8]]) as usize;
         let msg_len = u16::from_le_bytes([data[9], data[10]]) as usize;
-        if eth_off.saturating_add(20) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }
-        Ok(&data[eth_off..eth_off + 20] == &address[..20] && &data[msg_off..msg_off + msg_len] == message)
+        let eth_src = if eth_ix == 0xff { data.clone() } else { instruction_at(ix, eth_ix as usize)?.1 };
+        let msg_src = if msg_ix == 0xff { data.clone() } else { instruction_at(ix, msg_ix as usize)?.1 };
+        let eth = eth_src.get(eth_off..eth_off + 20);
+        let msg = msg_src.get(msg_off..msg_off + msg_len);
+        Ok(eth == Some(&address[..20]) && msg == Some(message))
     }
 }
 

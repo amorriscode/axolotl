@@ -1,3 +1,10 @@
+/**
+ * Reads TypeScript source into accounts, arguments, and statement trees.
+ *
+ * This pass may know the TypeScript AST and Axolotl's type names.
+ * It may not know Rust, and it may not decide what an expression means.
+ */
+
 import ts from "typescript";
 import { Diagnostics, locOf, type Loc } from "./diagnostics.ts";
 import type {
@@ -58,16 +65,9 @@ const SIMPLE_ACCOUNTS: Record<string, AccountKind> = {
   Mint: "mint",
   Token2022Program: "token2022",
   AssociatedTokenProgram: "associatedToken",
-  Fees: "fees",
-  RecentBlockhashes: "recentBlockhashes",
-  SlotHistory: "slotHistory",
-  LastRestartSlot: "lastRestart",
-  EpochRewards: "epochRewards",
   RemainingAccounts: "remaining",
   Instructions: "instructions",
   EpochSchedule: "epochSchedule",
-  SlotHashes: "slotHashes",
-  StakeHistory: "stakeHistory",
 };
 
 function entityName(name: ts.EntityName | ts.Expression): string {
@@ -114,8 +114,10 @@ export function parseSources(
     for (const statement of sf.statements) {
       if (ts.isImportDeclaration(statement)) {
         const spec = (statement.moduleSpecifier as ts.StringLiteral).text;
-        if (spec !== "@axolotl-sol/core" && !spec.startsWith(".")) {
-          diag.errorAt(sf, statement, `Only "@axolotl-sol/core" and relative imports are allowed (got "${spec}").`);
+        if (spec.startsWith(".")) {
+          diag.errorAt(sf, statement, `no such file "${spec}". Axolotl programs are one file or a set of files under src/, and imports are not a module system.`);
+        } else if (spec !== "@axolotl-sol/core") {
+          diag.errorAt(sf, statement, `Only "@axolotl-sol/core" can be imported (got "${spec}").`);
         }
         continue;
       }
@@ -164,6 +166,14 @@ export function parseSources(
         statement,
         "Unsupported top-level statement. Axolotl files contain imports, interfaces, and exported instruction functions.",
       );
+    }
+  }
+
+  for (const struct of structs) {
+    for (const field of struct.fields) {
+      if (typeof field.ty !== "string" && field.ty.kind === "struct" && !structNames.has(field.ty.name)) {
+        diag.error(field.loc.file, field.loc.line, field.loc.column, `Unknown struct ${field.ty.name}.`);
+      }
     }
   }
 
@@ -255,9 +265,13 @@ function parseDataEnum(sf: ts.SourceFile, node: ts.TypeAliasDeclaration, diag: D
 function parseInterface(sf: ts.SourceFile, node: ts.InterfaceDeclaration, diag: Diagnostics, enumNames: Set<string>): StructModel | null {
   const heritageNames = node.heritageClauses?.flatMap((clause) => clause.types.map((heritage) => entityName(heritage.expression))) ?? [];
   const isEvent = heritageNames.includes("Event");
-  const zeroCopy = heritageNames.includes("ZeroCopy");
-  if (heritageNames.some((name) => name !== "Event" && name !== "ZeroCopy")) {
-    diag.errorAt(sf, node, "Interfaces may only extend Event or ZeroCopy.");
+  if (heritageNames.includes("ZeroCopy")) {
+    diag.errorAt(sf, node, "Zero-copy accounts are not part of this language. Use an ordinary account.");
+    return null;
+  }
+  const zeroCopy = false;
+  if (heritageNames.some((name) => name !== "Event")) {
+    diag.errorAt(sf, node, "Interfaces may only extend Event.");
   }
   const fields: FieldModel[] = [];
   const seen = new Set<string>();
@@ -387,6 +401,10 @@ function parseFunction(sf: ts.SourceFile, node: ts.FunctionDeclaration, diag: Di
   const exported = node.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword);
   if (!node.name) {
     diag.errorAt(sf, node, "Instruction functions must be named.");
+    return null;
+  }
+  if (node.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.AsyncKeyword)) {
+    diag.errorAt(sf, node, "async functions are not part of this language.");
     return null;
   }
   if (!exported) {
@@ -589,7 +607,10 @@ function readOptsNode(sf: ts.SourceFile, node: ts.TypeNode, diag: Diagnostics): 
         if (text === null) diag.errorAt(sf, value, `\`${key}\` must be a string literal type.`);
         else if (key === "owner") opts.owner = text;
         else if (key === "address") opts.address = text;
-        else if (key === "constraint") opts.constraint = text;
+        else if (key === "constraint") {
+          opts.constraint = text;
+          opts.constraintLoc = locOf(sf, value);
+        }
         else if (key === "program") opts.seedsProgram = text;
         else if (key === "tokenMint") opts.tokenMint = text;
         else if (key === "tokenAuthority") opts.tokenAuthority = text;

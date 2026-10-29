@@ -81,7 +81,11 @@ class Writer {
   u8(value: number): void { this.bytes(Uint8Array.of(value & 0xff)); }
   u16(value: number): void { this.uint(BigInt(value), 2); }
   u32(value: number): void { this.uint(BigInt(value), 4); }
-  uint(value: bigint, size: number): void {
+  uint(value: bigint, size: number, signed = false): void {
+    const bits = BigInt(size * 8);
+    const min = signed ? -(1n << (bits - 1n)) : 0n;
+    const max = signed ? (1n << (bits - 1n)) - 1n : (1n << bits) - 1n;
+    if (value < min || value > max) throw new Error(`${value} does not fit in ${size} byte${size === 1 ? "" : "s"}`);
     const out = new Uint8Array(size);
     let current = value;
     const mod = 1n << BigInt(size * 8);
@@ -144,8 +148,9 @@ function writeField(writer: Writer, type: IdlType, value: unknown, idl?: IdlLike
   if (typeof type === "object" && "array" in type) {
     const [inner, length] = type.array;
     const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(String(value));
+    if (bytes.length > length) throw new Error(`expected at most ${length} bytes, got ${bytes.length}`);
     const out = new Uint8Array(length);
-    out.set(bytes.subarray(0, length));
+    out.set(bytes);
     if (inner !== "u8") throw new Error(`unsupported array element ${inner}`);
     writer.bytes(out);
     return;
@@ -202,8 +207,7 @@ function writeField(writer: Writer, type: IdlType, value: unknown, idl?: IdlLike
   if (signed && numberValue < 0n) {
     /* encoded by writer.uint */
   }
-  if (size <= 4 && !signed) writer.uint(numberValue, size);
-  else writer.uint(numberValue, size);
+  writer.uint(numberValue, size, signed);
 }
 
 function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
@@ -253,7 +257,7 @@ function readField(reader: Reader, type: IdlType, idl?: IdlLike): unknown {
   if (size <= 4 && !signed) return Number(value);
   if (size <= 2 && signed) return Number(value);
   if ((type === "u32" || type === "i32") && value <= BigInt(Number.MAX_SAFE_INTEGER) && value >= BigInt(Number.MIN_SAFE_INTEGER)) {
-    return type === "u32" ? Number(value) : Number(value);
+    return Number(value);
   }
   if (size <= 4) return Number(value);
   return value;
@@ -277,6 +281,7 @@ export function decodeAccount(idl: IdlLike, account: string, data: Uint8Array): 
   if (!defined) throw new Error(`Unknown account type "${account}".`);
   const reader = new Reader(data);
   if (discriminator) {
+    if (data.length < discriminator.length) throw new Error(`Account data is shorter than the ${account} discriminator.`);
     const got = [...reader.bytes(discriminator.length)];
     if (got.some((byte, index) => byte !== discriminator[index])) {
       throw new Error(`Account discriminator mismatch for ${account}.`);

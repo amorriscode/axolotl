@@ -128,3 +128,147 @@ export function pay(
   assert.match(result.rust, /system_program::transfer\(/);
   assert.deepEqual(result.idl.events[0]?.discriminator, discriminator("event", "Visited"));
 });
+
+function compileOne(source: string, filename = "probe.ts") {
+  return compile({
+    programName: "probe",
+    programId: PROGRAM_ID,
+    sources: [{ filename, source: `import { type Account, type Pubkey, type Signer, type SystemProgram, type UncheckedAccount, type u64 } from "@axolotl-sol/core";\n${source}` }],
+  });
+}
+
+function messages(source: string): string {
+  const result = compileOne(source);
+  return result.diagnostics.map((item) => `${item.file}:${item.line}:${item.column}: ${item.message}`).join("\n");
+}
+
+test("hasOne on a non-signer is an error, and a Signer keeps has_one", () => {
+  const bad = compileOne(`
+export interface Counter { authority: Pubkey; count: u64; }
+export function rob(counter: Account<Counter, { mut: true; hasOne: ["authority"] }>, authority: UncheckedAccount): void {
+  counter.count = 0n;
+}`);
+  assert.equal(bad.ok, false);
+  assert.match(messages(`
+export interface Counter { authority: Pubkey; count: u64; }
+export function rob(counter: Account<Counter, { mut: true; hasOne: ["authority"] }>, authority: UncheckedAccount): void {
+  counter.count = 0n;
+}`), /hasOne "authority" is only an equality check/);
+  assert.equal(bad.rust, "");
+  const good = compileOne(`
+export interface Counter { authority: Pubkey; count: u64; }
+export function increment(counter: Account<Counter, { mut: true; hasOne: ["authority"] }>, authority: Signer): void {
+  counter.count = counter.count + 1n;
+}`);
+  assert.equal(good.ok, true, good.diagnostics.map((item) => item.message).join("\n"));
+  assert.match(good.rust, /has_one = authority/);
+  assert.match(good.client, /export function increment\(accounts: \{ counter: string; authority: string \}\)/);
+});
+
+test("close to an unchecked account is an error", () => {
+  const result = compileOne(`
+export interface Counter { authority: Pubkey; count: u64; }
+export function shut(counter: Account<Counter, { close: "dest" }>, dest: UncheckedAccount<{ mut: true }>): void {}`);
+  assert.equal(result.ok, false);
+  assert.match(result.diagnostics.map((item) => item.message).join("\n"), /close sends the rent/);
+});
+
+test("seeds without bump are rejected", () => {
+  const result = compileOne(`
+export interface Counter { count: u64; }
+export function init(counter: Account<Counter, { init: true; payer: "user"; seeds: ["c"] }>, user: Signer<{ mut: true }>, systemProgram: SystemProgram): void {}`);
+  assert.equal(result.ok, false);
+  assert.match(result.diagnostics.map((item) => item.message).join("\n"), /seeds require bump: true/);
+});
+
+test("assigning cpiReturn keeps the invoke", () => {
+  const result = compileOne(`
+import { cpiReturn, type Program } from "@axolotl-sol/core";
+export interface Counter { count: u64; }
+export function take(counter: Account<Counter, { mut: true }>, echo: Program, value: u64): void {
+  counter.count = cpiReturn<u64>({ program: echo, name: "double", accounts: [], args: [value] });
+}`);
+  assert.equal(result.ok, true, result.diagnostics.map((item) => item.message).join("\n"));
+  assert.match(result.rust, /invoke\(/);
+  assert.match(result.rust, /WrongReturnProgram/);
+  assert.match(result.rust, /read_u64\(/);
+});
+
+test("optional account reads outside present() are rejected", () => {
+  const result = compileOne(`
+export interface Counter { count: u64; }
+export function touch(counter: Account<Counter, { mut: true; optional: true }>): void {
+  counter.count = counter.count + 1n;
+}`);
+  assert.equal(result.ok, false);
+  assert.match(result.diagnostics.map((item) => item.message).join("\n"), /optional/);
+  assert.doesNotMatch(result.rust, /unwrap\(/);
+});
+
+test("switch fallthrough and a for-loop continue are explicit", () => {
+  const fall = compileOne(`
+export enum Side { Left, Right }
+export interface Counter { count: u64; }
+export function go(counter: Account<Counter, { mut: true }>, side: Side): void {
+  switch (side) {
+    case Side.Left:
+      counter.count = 1n;
+    case Side.Right:
+      counter.count = 2n;
+      break;
+  }
+}`);
+  assert.equal(fall.ok, false);
+  assert.match(fall.diagnostics.map((item) => item.message).join("\n"), /falls through/);
+  const loop = compileOne(`
+export interface Counter { count: u64; }
+export function spin(counter: Account<Counter, { mut: true }>, times: u64): void {
+  for (let i: u64 = 0n; i < times; i = i + 1n) {
+    if (i === 5n) { continue; }
+    counter.count = counter.count + 1n;
+  }
+}`);
+  assert.equal(loop.ok, true, loop.diagnostics.map((item) => item.message).join("\n"));
+  const firstAdd = loop.rust.indexOf("i = i.checked_add");
+  const continued = loop.rust.indexOf("continue;");
+  const secondAdd = loop.rust.indexOf("i = i.checked_add", firstAdd + 1);
+  assert.ok(firstAdd >= 0 && continued > firstAdd && secondAdd > continued);
+  const keyword = compileOne(`
+export interface Counter { count: u64; }
+export function spin(counter: Account<Counter, { mut: true }>, times: u64): void {
+  for (let type: u64 = 0n; type < times; type = type + 1n) { counter.count = counter.count + 1n; }
+}`);
+  assert.equal(keyword.ok, false);
+  assert.match(keyword.diagnostics.map((item) => item.message).join("\n"), /keyword "type"/);
+});
+
+test("a broken constraint points at the account, and a relative import is not loaded", () => {
+  const constraint = compileOne(`
+export interface Counter { count: u64; }
+export function gated(counter: Account<Counter, { constraint: "counter.count +" }>): void {}`);
+  assert.equal(constraint.ok, false);
+  const hit = constraint.diagnostics.find((item) => item.message.includes("constraint"));
+  assert.ok(hit);
+  assert.equal(hit.file, "probe.ts");
+  assert.ok(hit.line > 1);
+  const imported = compile({
+    programName: "probe",
+    programId: PROGRAM_ID,
+    sources: [{ filename: "probe.ts", source: `import { helper } from "./nope.ts";\nexport function go(): void { helper(); }\n` }],
+  });
+  assert.match(imported.diagnostics.map((item) => item.message).join("\n"), /no such file "\.\/nope\.ts"/);
+});
+
+test("Vec and Str bounds are checked, and an unknown struct is a diagnostic", () => {
+  const full = compileOne(`
+import { push, type Vec } from "@axolotl-sol/core";
+export interface Bag { samples: Vec<u64, 2>; }
+export function add(bag: Account<Bag, { mut: true }>, value: u64): void { push(bag.samples, value); }`);
+  assert.equal(full.ok, true, full.diagnostics.map((item) => item.message).join("\n"));
+  assert.match(full.rust, /VecFull/);
+  assert.match(full.rust, /len\(\) >= 2/);
+  const missing = compileOne(`export interface Holder { item: Missing; }\nexport function go(): void {}`);
+  assert.equal(missing.ok, false);
+  assert.match(missing.diagnostics.map((item) => item.message).join("\n"), /Unknown struct Missing/);
+  assert.equal(missing.rust, "");
+});

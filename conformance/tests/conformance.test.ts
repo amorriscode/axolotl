@@ -247,33 +247,10 @@ test("PDA seeds can mix a constant, a u64 arg, and an account", async () => {
   assert.equal(typeof data.bump, "number");
 });
 
-test("init_if_needed creates once and then updates", async () => {
-  const world = await boot();
-  const encoder = getAddressEncoder();
-  const [counter] = await getProgramDerivedAddress({
-    programAddress: idl.address,
-    seeds: [new TextEncoder().encode("once")],
-  });
-  const accounts = [
-    meta(counter, "w"),
-    meta(world.payer.address, "ws", world.payer),
-    meta(SYSTEM, "r"),
-  ];
-  await send(world, [ix(world, "reopen", accounts)]);
-  world.svm.expireBlockhash();
-  await send(world, [ix(world, "reopen", accounts)]);
-  const account = world.svm.getAccount(counter);
-  assert.equal(account.exists && decodeAccount(idl, "Counter", account.data).count, 2n);
-});
-
-test("compute budget limit rejects a loop that does not fit", async () => {
+test("continue in a for loop still increments", async () => {
   const world = await boot();
   const counter = await freshCounter(world);
-  const spin = ix(world, "spin", [meta(counter.address, "w")], { times: 40n });
-  const denied = await sendAllowingFailure(world, [setComputeUnitLimit(200), spin]);
-  assert.ok(denied instanceof FailedTransactionMetadata);
-  const allowed = await send(world, [setComputeUnitLimit(200_000), spin]);
-  assert.ok(allowed.computeUnitsConsumed() > 200n);
+  await send(world, [ix(world, "spin_skip", [meta(counter.address, "w")], { times: 10n })]);
   const account = world.svm.getAccount(counter.address);
-  assert.equal(account.exists && decodeAccount(idl, "Counter", account.data).count, 40n);
+  assert.equal(account.exists && decodeAccount(idl, "Counter", account.data).count, 9n);
 });

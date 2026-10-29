@@ -36,12 +36,11 @@ Account options are a type literal so both `tsc` and Axolotl can see them:
 | --- | --- |
 | `mut: true` | The account is writable |
 | `init: true` | Create the account, paid by `payer` |
-| `initIfNeeded: true` | Create it only when it does not exist |
 | `payer: "authority"` | Name of the signer who pays rent |
-| `seeds: ["profile", { account: "user" }, { arg: "id" }]` | PDA seeds |
+| `seeds: ["profile", { account: "user" }, { arg: "id" }]` | PDA seeds. `bump: true` is required whenever seeds are set |
 | `bump: true` | Canonical bump. A `bump: u8` field is filled in on init |
-| `hasOne: ["authority"]` | Field `authority` must equal that account's key |
-| `close: "authority"` | At the end of the instruction, lamports go to this account |
+| `hasOne: ["authority"]` | Field `authority` must equal that account's key. This is not a signature check. The named account must be a `Signer`, or the compiler rejects the instruction |
+| `close: "authority"` | At the end of the instruction, lamports go to this account. The destination must be a `Signer` or a base58 address |
 | `owner: "tokenProgram"` | Account owner must be that account's key, or a base58 address |
 | `address: "1111..."` | Account address must be that key, or another account's key |
 | `constraint: "counter.count > 0"` | Boolean expression over accounts and arguments. No arithmetic |
@@ -51,9 +50,11 @@ Account options are a type literal so both `tsc` and Axolotl can see them:
 | `tokenMint` / `tokenAuthority` | Anchor `token::mint` and `token::authority` |
 | `associatedMint` / `associatedAuthority` | Anchor `associated_token` constraints |
 
-Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `Token2022Program`, `TokenAccount`, `Mint`, `UncheckedAccount`, `SystemAccount`, `Clock`, `Rent`, `EpochSchedule`, `Instructions`, `SlotHashes`, `StakeHistory`, `Program`, `RemainingAccounts`.
+Other account types: `Signer`, `SystemProgram`, `TokenProgram`, `Token2022Program`, `TokenAccount`, `Mint`, `UncheckedAccount`, `SystemAccount`, `Clock`, `Rent`, `EpochSchedule`, `Instructions`, `Program`, `RemainingAccounts`.
 
-`optional: true` makes an account `Option`. Pass the program id when it is absent, and test it with `present(account)`. `realloc: N` grows the account; the payer is the same `payer` option. `ZeroCopy` accounts are Anchor `AccountLoader`s. `Vec<T, N>` and `Str<N>` are dynamically sized up to `N`. Unit enums are one byte.
+`UncheckedAccount` does not check the owner. Do not use it for an authority. `hasOne` and `close` reject it.
+
+`optional: true` makes an account `Option`. Pass the program id when it is absent. A field read must sit inside `if (present(account)) { ... }`. `realloc: N` grows the account; the payer is the same `payer` option. `Vec<T, N>` stores at most N elements, and `push` fails with `VecFull` past that. `Str<N>` stores at most N bytes, and assignment fails with `StringTooLong`. Unit enums are one byte.
 
 `TokenAccount` and `Mint` may be wrapped in `Account<TokenAccount, { mut: true }>`. `TokenProgram` accepts the SPL Token interface, so a client can pass the classic token program.
 
@@ -71,11 +72,21 @@ Instruction arguments and account fields use these types:
 | `boolean` | `bool` | |
 | `string` | `String` | arguments and events only |
 | `Pubkey` | `Pubkey` | |
-| `bytes32` | `[u8; 32]` | assign a string of at most 32 bytes |
+| `bytes32` | `[u8; 32]` | a string of at most 32 bytes. `tsc` does not check the length |
 
 Account fields cannot be an unbounded `string`. Use `Str<N>`, `bytes32`, or pass the string as an argument. `u128` and `i128` are account fields and arguments.
 
 Integer arithmetic uses checked math and returns `ArithmeticOverflow` instead of wrapping. Comparisons are `===`, `!==`, `<`, `<=`, `>`, `>=`.
+
+## What `tsc` checks, and what Axolotl checks
+
+| | `tsc` | Axolotl |
+| --- | --- | --- |
+| `u8` … `u32`, `i8` … `i32` | `number`. `1000` is a valid `u8` | a literal must fit the type |
+| `u64`, `u128`, `i64`, `i128` | `bigint` | a literal must fit the type |
+| `bytes32` | `string`, any length | at most 32 bytes |
+| `hasOne: ["typo"]` | allowed. The option is a string | the name must be a `Signer` parameter |
+| `seeds` without `bump` | allowed | error |
 
 ## Control flow
 
@@ -138,8 +149,8 @@ cpi({
 
 `Clock` exposes `unixTimestamp`, `slot`, and `epoch`. `Rent` exposes `minimumBalance(space)`. `EpochSchedule` exposes `slotsPerEpoch`, `leaderScheduleSlotOffset`, `warmup`, `firstNormalEpoch`, and `firstNormalSlot`. `Instructions` exposes `index`. `SlotHashes` and `StakeHistory` expose `bytes`, the account length.
 
-`token.createAssociatedAccount` creates an associated token account. The instruction must also take `AssociatedTokenProgram`, because the runtime only loads that program for CPI when its account is in the transaction. `token.mintTo` mints through the token interface. `token.transferFeeBasisPoints(mint)` reads a Token-2022 transfer-fee config. `cpiReturn<T>` reads the callee's return data. `emitCpi` writes an Anchor self-CPI event. Clients decode that event from the inner instruction (`decodeEventInstructions`), not from `Program data:` logs.
+`token.createAssociatedAccount` creates an associated token account. The instruction must also take `AssociatedTokenProgram`, because the runtime only loads that program for CPI when its account is in the transaction. `token.mintTo` and `token.transferChecked` require `tokenMint` and `tokenAuthority` on every token account they touch. `cpiReturn<T>` reads the callee's return data and checks that it came from that program. `emitCpi` writes an Anchor self-CPI event. Clients decode that event from the inner instruction (`decodeEventInstructions`), not from `Program data:` logs.
 
 ## What is rejected
 
-Imports other than `@axolotl-sol/core` and relative files, classes, `async`, destructuring, template strings, and arbitrary calls. `switch` covers enums. `Option<T>` and `Vec<T>` are instruction arguments; account vectors stay `Vec<T, N>`. Data-carrying enums are exported unions of `{ kind: "Name"; ... }` objects. The diagnostic points at the TypeScript source line. `axolotl build` also maps `lib.rs` line numbers from a failed `anchor build` back to that source. Axolotl lowers to Anchor Rust and does not emit sBPF itself; that is the compiler backend, not a missing Anchor feature.
+Imports other than `@axolotl-sol/core`, including relative paths. Classes, `async`, destructuring, template strings, and arbitrary calls. `switch` covers enums and does not fall through: a case that is followed by another case must end with `break`. `continue` inside `for` runs the increment, then continues. `Option<T>` and `Vec<T>` are instruction arguments; account vectors stay `Vec<T, N>`. Data-carrying enums are exported unions of `{ kind: "Name"; ... }` objects. `initIfNeeded`, zero-copy accounts, and sysvars that only expose a byte length are not in the language. The diagnostic points at the TypeScript source line. `axolotl build` also maps `lib.rs` line numbers from a failed `anchor build` back to that source. Axolotl lowers to Anchor Rust and does not emit sBPF itself; that is the compiler backend, not a missing Anchor feature.

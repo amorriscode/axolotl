@@ -14,11 +14,9 @@ no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
-init-if-needed = ["anchor-lang/init-if-needed"]
 event-cpi = ["anchor-lang/event-cpi"]
-default = ["init-if-needed", "event-cpi"]
+default = ["event-cpi"]
 
 [dependencies]
 anchor-lang = "1.2.2"
 anchor-spl = "1.2.2"
-bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }

@@ -23,7 +23,6 @@ pub mod counter {
     }
 
     pub fn add(ctx: Context<Add>, amount: u64) -> Result<()> {
-        require!((ctx.accounts.authority.key() == ctx.accounts.counter.authority), AxolotlError::Unauthorized);
         require!((amount > 0u64), AxolotlError::AmountMustBePositive);
         let __ax_1 = ctx.accounts.counter.count.checked_add(amount).ok_or(AxolotlError::ArithmeticOverflow)?;
         ctx.accounts.counter.count = __ax_1;
@@ -66,8 +65,6 @@ pub struct Add<'info> {
 
 #[error_code]
 pub enum AxolotlError {
-    #[msg("Unauthorized")]
-    Unauthorized,
     #[msg("Amount must be positive")]
     AmountMustBePositive,
     #[msg("Arithmetic overflow or division by zero")]

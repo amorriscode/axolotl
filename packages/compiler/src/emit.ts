@@ -1,3 +1,10 @@
+/**
+ * Prints a program model as Anchor Rust, an IDL, and a typed client.
+ *
+ * This pass may know Rust and Anchor's attribute grammar.
+ * It may not invent a meaning the model did not already decide.
+ */
+
 import { discriminator, isPubkey } from "./codec.ts";
 import type { Loc } from "./diagnostics.ts";
 import type {
@@ -12,6 +19,7 @@ import type {
   SourceMap,
   StructModel,
 } from "./model.ts";
+import { renderStmt } from "./print.ts";
 import { accountSpace, idlArgType, idlFieldType, idlType, rustArgType, rustFieldType, rustType, snake } from "./util.ts";
 
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
@@ -30,6 +38,32 @@ const EPOCH_REWARDS = "SysvarEpochRewards1111111111111111111111111";
 const ED25519 = "Ed25519SigVerify111111111111111111111111111";
 const SECP256K1 = "KeccakSecp256k11111111111111111111111111111";
 const ASSOCIATED_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+/**
+ * Addresses that must appear in the IDL and, when the Rust type does not
+ * already enforce them, in `#[account(address = ...)]`.
+ */
+const FIXED_ADDRESS: Partial<Record<AccountParam["accountKind"], string>> = {
+  system: SYSTEM_PROGRAM,
+  clock: CLOCK,
+  rent: RENT,
+  instructions: INSTRUCTIONS,
+  epochSchedule: EPOCH,
+  fees: FEES,
+  lastRestart: LAST_RESTART,
+  tokenProgram: TOKEN_PROGRAM,
+  token2022: TOKEN_2022,
+  associatedToken: ASSOCIATED_TOKEN,
+};
+
+const ADDRESS_IN_RUST = new Set<AccountParam["accountKind"]>([
+  "instructions",
+  "associatedToken",
+  "fees",
+  "lastRestart",
+  "token2022",
+]);
 
 export function emitRust(program: ProgramModel): { rust: string; sourceMap: SourceMap } {
   const lines: string[] = [];
@@ -112,7 +146,8 @@ function emitInstruction(
   const ret = instruction.returnType ? rustType(instruction.returnType) : "()";
   push(`    pub fn ${instruction.rustName}(${params}) -> Result<${ret}> {`, instruction.loc);
   for (const stmt of instruction.body) {
-    for (const line of stmt.code.split("\n")) {
+    const rendered = stmt.ir ? renderStmt(stmt.ir) : stmt.code;
+    for (const line of rendered.split("\n")) {
       push(line.length ? `        ${line}` : "", stmt.loc);
     }
   }
@@ -125,7 +160,8 @@ function emitHelper(helper: ProgramModel["helpers"][number], push: (text: string
   const ret = helper.returnType ? rustType(helper.returnType) : "()";
   push(`fn ${helper.rustName}(${args}) -> Result<${ret}> {`, helper.loc);
   for (const stmt of helper.body) {
-    for (const line of stmt.code.split("\n")) push(line.length ? `    ${line}` : "", stmt.loc);
+    const rendered = stmt.ir ? renderStmt(stmt.ir) : stmt.code;
+    for (const line of rendered.split("\n")) push(line.length ? `    ${line}` : "", stmt.loc);
   }
   if (!helper.returnType) push("    Ok(())");
   push("}");
@@ -197,11 +233,15 @@ function emitAccounts(
   for (const account of accounts) {
     if (account.accountKind === "remaining") continue;
     const attr = accountAttr(account, program);
-    if (account.accountKind === "unchecked" || account.accountKind === "program" || account.accountKind === "instructions" || account.accountKind === "slotHashes" || account.accountKind === "stakeHistory" || account.accountKind === "associatedToken" || account.accountKind === "fees" || account.accountKind === "recentBlockhashes" || account.accountKind === "slotHistory" || account.accountKind === "lastRestart" || account.accountKind === "epochRewards") {
-      push("    /// CHECK: Axolotl does not verify this account's owner. Constraints above still apply.");
+    const pinned = FIXED_ADDRESS[account.accountKind];
+    if (account.accountKind === "unchecked" || account.accountKind === "program" || (pinned && accountRustType(account, program).startsWith("Unchecked"))) {
+      const why = pinned
+        ? `Pinned to ${pinned}. The owner is not checked beyond that address.`
+        : "The program does not check this account's owner or discriminator.";
+      push(`    /// CHECK: ${why}`, account.loc);
     }
-    if (attr) push(`    #[account(${attr})]`);
-    push(`    pub ${account.rustName}: ${accountRustType(account, program)},`);
+    if (attr) push(`    #[account(${attr})]`, account.loc);
+    push(`    pub ${account.rustName}: ${accountRustType(account, program)},`, account.loc);
   }
   push("}");
   push("");
@@ -230,9 +270,9 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
     else parts.push("bump");
   }
   for (const rel of opts.hasOne) parts.push(`has_one = ${snake(rel)}`);
-  if (opts.close) parts.push(`close = ${snake(opts.close)}`);
+  if (opts.close) parts.push(`close = ${isPubkey(opts.close) ? `pubkey!("${opts.close}")` : snake(opts.close)}`);
   if (opts.owner) parts.push(`owner = ${pubkeyOrAccount(opts.owner)}`);
-  if (opts.address && account.accountKind !== "instructions" && account.accountKind !== "slotHashes" && account.accountKind !== "stakeHistory" && account.accountKind !== "fees" && account.accountKind !== "recentBlockhashes" && account.accountKind !== "slotHistory" && account.accountKind !== "lastRestart" && account.accountKind !== "epochRewards" && account.accountKind !== "associatedToken") {
+  if (opts.address && !FIXED_ADDRESS[account.accountKind]) {
     parts.push(`address = ${pubkeyOrAccount(opts.address)}`);
   }
   if (opts.constraintRust) parts.push(`constraint = ${opts.constraintRust}`);
@@ -243,10 +283,10 @@ function accountAttr(account: AccountParam, program: ProgramModel): string {
   if (opts.tokenAuthority) parts.push(`token::authority = ${snake(opts.tokenAuthority)}`);
   if (opts.associatedMint) parts.push(`associated_token::mint = ${snake(opts.associatedMint)}`);
   if (opts.associatedAuthority) parts.push(`associated_token::authority = ${snake(opts.associatedAuthority)}`);
-  if (account.accountKind === "instructions") parts.push(`address = pubkey!("${INSTRUCTIONS}")`);
-  if (account.accountKind === "slotHashes") parts.push(`address = pubkey!("${SLOT_HASHES}")`);
-  if (account.accountKind === "stakeHistory") parts.push(`address = pubkey!("${STAKE_HISTORY}")`);
-  if (account.accountKind === "associatedToken") parts.push(`address = pubkey!("${ASSOCIATED_TOKEN}")`);
+  if (ADDRESS_IN_RUST.has(account.accountKind)) {
+    const fixed = FIXED_ADDRESS[account.accountKind];
+    if (fixed) parts.push(`address = pubkey!("${fixed}")`);
+  }
   return parts.join(", ");
 }
 
@@ -333,32 +373,44 @@ function emitCodec(push: (text: string, loc?: Loc) => void): void {
   for (const scalar of scalars) {
     if (scalar === "bool") {
       push("    pub fn push_bool(data: &mut Vec<u8>, value: bool) { data.push(u8::from(value)); }");
+      push("    pub fn read_bool(data: &[u8]) -> Result<bool> {");
+      push("        let byte = *data.first().ok_or(AxolotlError::AccountTooSmall)?;");
+      push("        Ok(byte != 0)");
+      push("    }");
     } else if (scalar === "string") {
       push("    pub fn push_string(data: &mut Vec<u8>, value: &str) {");
       push("        data.extend_from_slice(&(value.len() as u32).to_le_bytes());");
       push("        data.extend_from_slice(value.as_bytes());");
       push("    }");
+      push("    pub fn read_string(data: &[u8]) -> Result<String> {");
+      push("        if data.len() < 4 { return Err(AxolotlError::AccountTooSmall.into()); }");
+      push("        let len = u32::from_le_bytes(data[..4].try_into().map_err(|_| AxolotlError::AccountTooSmall)?) as usize;");
+      push("        let bytes = data.get(4..4 + len).ok_or(AxolotlError::AccountTooSmall)?;");
+      push("        String::from_utf8(bytes.to_vec()).map_err(|_| AxolotlError::AccountTooSmall.into())");
+      push("    }");
     } else if (scalar === "pubkey") {
       push("    pub fn push_pubkey(data: &mut Vec<u8>, value: Pubkey) { data.extend_from_slice(value.as_ref()); }");
+      push("    pub fn read_pubkey(data: &[u8]) -> Result<Pubkey> {");
+      push("        let bytes = data.get(..32).ok_or(AxolotlError::AccountTooSmall)?;");
+      push("        let buf: [u8; 32] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;");
+      push("        Ok(Pubkey::new_from_array(buf))");
+      push("    }");
     } else if (scalar === "bytes32") {
       push("    pub fn push_bytes32(data: &mut Vec<u8>, value: &[u8; 32]) { data.extend_from_slice(value); }");
+      push("    pub fn read_bytes32(data: &[u8]) -> Result<[u8; 32]> {");
+      push("        let bytes = data.get(..32).ok_or(AxolotlError::AccountTooSmall)?;");
+      push("        bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall.into())");
+      push("    }");
     } else {
+      const width = scalar === "u128" || scalar === "i128" ? 16 : scalar === "u64" || scalar === "i64" ? 8 : scalar === "u32" || scalar === "i32" ? 4 : scalar === "u16" || scalar === "i16" ? 2 : 1;
       push(`    pub fn push_${scalar}(data: &mut Vec<u8>, value: ${scalar}) { data.extend_from_slice(&value.to_le_bytes()); }`);
-      push(`    pub fn read_${scalar}(data: &[u8]) -> ${scalar} {`);
-      push(`        let mut buf = [0u8; ${scalar === "u128" || scalar === "i128" ? 16 : scalar === "u64" || scalar === "i64" ? 8 : scalar === "u32" || scalar === "i32" ? 4 : scalar === "u16" || scalar === "i16" ? 2 : 1}];`);
-      push("        let len = buf.len();");
-      push("        buf.copy_from_slice(&data[..len]);");
-      push(`        ${scalar}::from_le_bytes(buf)`);
+      push(`    pub fn read_${scalar}(data: &[u8]) -> Result<${scalar}> {`);
+      push(`        let bytes = data.get(..${width}).ok_or(AxolotlError::AccountTooSmall)?;`);
+      push(`        let buf: [u8; ${width}] = bytes.try_into().map_err(|_| AxolotlError::AccountTooSmall)?;`);
+      push(`        Ok(${scalar}::from_le_bytes(buf))`);
       push("    }");
     }
   }
-  push("    pub fn transfer_fee_bps(mint: &AccountInfo) -> Result<u16> {");
-  push("        use anchor_spl::token_2022::spl_token_2022::extension::BaseStateWithExtensions;");
-  push("        let data = mint.try_borrow_data()?;");
-  push("        let state = anchor_spl::token_2022::spl_token_2022::extension::StateWithExtensions::<anchor_spl::token_2022::spl_token_2022::state::Mint>::unpack(&data)?;");
-  push("        let config = state.get_extension::<anchor_spl::token_2022::spl_token_2022::extension::transfer_fee::TransferFeeConfig>()?;");
-  push("        Ok(u16::from(config.newer_transfer_fee.transfer_fee_basis_points))");
-  push("    }");
   push("    pub fn instruction_at(ix: &AccountInfo, index: usize) -> Result<(Pubkey, Vec<u8>)> {");
   push("        let data = ix.try_borrow_data()?;");
   push("        if data.len() < 2 { return Err(ProgramError::InvalidInstructionData.into()); }");
@@ -373,8 +425,8 @@ function emitCodec(push: (text: string, loc?: Loc) => void): void {
   push("            cursor += 33;");
   push("        }");
   push("        if cursor + 34 > data.len() { return Err(ProgramError::InvalidInstructionData.into()); }");
-  push("        let mut program_id = [0u8; 32];");
-  push("        program_id.copy_from_slice(&data[cursor..cursor + 32]);");
+  push("        let program_bytes = data.get(cursor..cursor + 32).ok_or(ProgramError::InvalidInstructionData)?;");
+  push("        let program_id: [u8; 32] = program_bytes.try_into().map_err(|_| ProgramError::InvalidInstructionData)?;");
   push("        cursor += 32;");
   push("        let len = u16::from_le_bytes([data[cursor], data[cursor + 1]]) as usize;");
   push("        cursor += 2;");
@@ -385,21 +437,30 @@ function emitCodec(push: (text: string, loc?: Loc) => void): void {
   push("        let (program_id, data) = instruction_at(ix, index)?;");
   push(`        let ed = pubkey!("${ED25519}");`);
   push("        if program_id != ed || data.len() < 16 || data[0] != 1 { return Ok(false); }");
+  push("        let pk_ix = u16::from_le_bytes([data[8], data[9]]);");
+  push("        let msg_ix = u16::from_le_bytes([data[14], data[15]]);");
+  push("        if pk_ix != u16::MAX || msg_ix != u16::MAX { return Ok(false); }");
   push("        let pk_off = u16::from_le_bytes([data[6], data[7]]) as usize;");
   push("        let msg_off = u16::from_le_bytes([data[10], data[11]]) as usize;");
   push("        let msg_len = u16::from_le_bytes([data[12], data[13]]) as usize;");
-  push("        if pk_off.saturating_add(32) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }");
-  push("        Ok(&data[pk_off..pk_off + 32] == pubkey.as_ref() && &data[msg_off..msg_off + msg_len] == message)");
+  push("        let pk = data.get(pk_off..pk_off + 32);");
+  push("        let msg = data.get(msg_off..msg_off + msg_len);");
+  push("        Ok(pk == Some(pubkey.as_ref()) && msg == Some(message))");
   push("    }");
   push("    pub fn check_secp256k1(ix: &AccountInfo, index: usize, address: &[u8; 32], message: &[u8]) -> Result<bool> {");
   push("        let (program_id, data) = instruction_at(ix, index)?;");
   push(`        let secp = pubkey!("${SECP256K1}");`);
   push("        if program_id != secp || data.len() < 12 || data[0] != 1 { return Ok(false); }");
+  push("        let eth_ix = data[6];");
+  push("        let msg_ix = data[11];");
   push("        let eth_off = u16::from_le_bytes([data[4], data[5]]) as usize;");
   push("        let msg_off = u16::from_le_bytes([data[7], data[8]]) as usize;");
   push("        let msg_len = u16::from_le_bytes([data[9], data[10]]) as usize;");
-  push("        if eth_off.saturating_add(20) > data.len() || msg_off.saturating_add(msg_len) > data.len() { return Ok(false); }");
-  push("        Ok(&data[eth_off..eth_off + 20] == &address[..20] && &data[msg_off..msg_off + msg_len] == message)");
+  push("        let eth_src = if eth_ix == 0xff { data.clone() } else { instruction_at(ix, eth_ix as usize)?.1 };");
+  push("        let msg_src = if msg_ix == 0xff { data.clone() } else { instruction_at(ix, msg_ix as usize)?.1 };");
+  push("        let eth = eth_src.get(eth_off..eth_off + 20);");
+  push("        let msg = msg_src.get(msg_off..msg_off + msg_len);");
+  push("        Ok(eth == Some(&address[..20]) && msg == Some(message))");
   push("    }");
   push("}");
   push("");
@@ -487,20 +548,8 @@ function idlAccount(account: AccountParam): IdlAccount {
   const result: IdlAccount = { name: account.rustName };
   if (writable) result.writable = true;
   if (signer) result.signer = true;
-  if (account.accountKind === "system") result.address = SYSTEM_PROGRAM;
-  if (account.accountKind === "clock") result.address = CLOCK;
-  if (account.accountKind === "rent") result.address = RENT;
-  if (account.accountKind === "instructions") result.address = INSTRUCTIONS;
-  if (account.accountKind === "epochSchedule") result.address = EPOCH;
-  if (account.accountKind === "slotHashes") result.address = SLOT_HASHES;
-  if (account.accountKind === "stakeHistory") result.address = STAKE_HISTORY;
-  if (account.accountKind === "fees") result.address = FEES;
-  if (account.accountKind === "recentBlockhashes") result.address = RECENT_BLOCKHASHES;
-  if (account.accountKind === "slotHistory") result.address = SLOT_HISTORY;
-  if (account.accountKind === "lastRestart") result.address = LAST_RESTART;
-  if (account.accountKind === "epochRewards") result.address = EPOCH_REWARDS;
-  if (account.accountKind === "token2022") result.address = TOKEN_2022;
-  if (account.accountKind === "associatedToken") result.address = ASSOCIATED_TOKEN;
+  const fixed = FIXED_ADDRESS[account.accountKind];
+  if (fixed) result.address = fixed;
   if (account.opts.optional) result.optional = true;
   if (account.opts.seeds.length > 0) {
     result.pda = {
@@ -515,15 +564,29 @@ function idlAccount(account: AccountParam): IdlAccount {
 }
 
 export function emitClient(program: ProgramModel, idl: Idl): string {
+  const builders = program.instructions.filter((item) => !item.failed).map((instruction) => {
+    const accounts = instruction.params.filter((param): param is AccountParam => param.kind === "account" && param.accountKind !== "remaining");
+    const args = instruction.params.filter((param): param is ArgParam => param.kind === "arg");
+    const accountFields = accounts.map((account) => `${account.name}: string`).join("; ");
+    const argFields = args.map((arg) => `${arg.name}: unknown`).join("; ");
+    const order = accounts.map((account) => `{ name: ${JSON.stringify(account.name)}, address: accounts.${account.name} }`).join(", ");
+    const argObject = args.length ? `, { ${args.map((arg) => arg.name).join(", ")} }` : "";
+    const argParam = args.length ? `, args: { ${argFields} }` : "";
+    return `export function ${instruction.name}(accounts: { ${accountFields} }${argParam}) {
+  return {
+    name: ${JSON.stringify(instruction.name)},
+    accounts: [${order}],
+    data: encodeInstruction(idl, ${JSON.stringify(instruction.name)}${argObject}),
+  };
+}`;
+  });
   return `// Generated by Axolotl from ${program.name}. Do not edit.
 import { decodeAccount, encodeInstruction } from "@axolotl-sol/client";
 
 export const programId = ${JSON.stringify(program.programId)};
 export const idl = ${JSON.stringify(idl, null, 2)} as const;
 
-export function encode(name: string, args: Record<string, unknown> = {}): Uint8Array {
-  return encodeInstruction(idl, name, args);
-}
+${builders.join("\n\n")}
 
 export function decode(account: string, data: Uint8Array): Record<string, unknown> {
   return decodeAccount(idl, account, data);

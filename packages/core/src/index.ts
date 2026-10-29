@@ -7,11 +7,15 @@
  */
 
 declare const pubkeyBrand: unique symbol;
-declare const bytes32Brand: unique symbol;
 
 /** 32-byte Solana public key. Compare with `===`. */
 export type Pubkey = string & { readonly [pubkeyBrand]: true };
 
+/**
+ * `tsc` treats these as `number` or `bigint`. It does not range-check them.
+ * Axolotl does, when it can see a literal or an annotated type.
+ * See the table in docs/language.md.
+ */
 export type u8 = number;
 export type u16 = number;
 export type u32 = number;
@@ -23,8 +27,11 @@ export type i32 = number;
 export type i64 = bigint;
 export type i128 = bigint;
 
-/** Fixed 32-byte account field. Assign a string of at most 32 bytes. */
-export type bytes32 = { readonly [bytes32Brand]: true };
+/**
+ * A string stored as 32 bytes. `tsc` accepts any string. Axolotl rejects
+ * one longer than 32 bytes.
+ */
+export type bytes32 = string;
 
 export type bool = boolean;
 

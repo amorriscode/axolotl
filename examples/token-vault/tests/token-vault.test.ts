@@ -16,7 +16,9 @@ import {
   meta,
   mintTo,
   send,
+  sendAllowingFailure,
 } from "@axolotl-sol/testing";
+import { FailedTransactionMetadata } from "litesvm";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const compiled = compile({
@@ -79,4 +81,39 @@ test("deposit and withdraw SPL tokens through a PDA vault", async () => {
   assert.equal(end.exists && decodeAccount(idl, "Vault", end.data).deposited, 250_000n);
   const owner = world.svm.getAccount(ownerToken.address);
   assert.equal(owner.exists && tokenAmount(owner.data), 750_000n);
+});
+
+test("deposit rejects a same-mint token account the vault does not own", async () => {
+  const idl = compiled.idl;
+  const world = await createWorld([{ id: idl.address, soPath: findProgramSo(root, "token_vault") }]);
+  const mint = await createMint(world, 6, world.payer.address);
+  const ownerToken = await createTokenAccount(world, mint.address, world.payer.address);
+  const stranger = await createTokenAccount(world, mint.address, world.payer.address);
+  await mintTo(world, mint.address, ownerToken.address, 1_000_000n);
+  const encoder = getAddressEncoder();
+  const [vault] = await getProgramDerivedAddress({
+    programAddress: idl.address,
+    seeds: [new TextEncoder().encode("vault"), encoder.encode(mint.address), encoder.encode(world.payer.address)],
+  });
+  await send(world, [
+    instruction(idl.address, [
+      meta(vault, "w"),
+      meta(world.payer.address, "ws", world.payer),
+      meta(mint.address, "r"),
+      meta("11111111111111111111111111111111", "r"),
+    ], encodeInstruction(idl, "initialize")),
+  ]);
+  const denied = await sendAllowingFailure(world, [
+    instruction(idl.address, [
+      meta(vault, "w"),
+      meta(world.payer.address, "rs", world.payer),
+      meta(mint.address, "r"),
+      meta(ownerToken.address, "w"),
+      meta(stranger.address, "w"),
+      meta(TOKEN_PROGRAM_ADDRESS, "r"),
+    ], encodeInstruction(idl, "deposit", { amount: 1n })),
+  ]);
+  assert.ok(denied instanceof FailedTransactionMetadata);
+  const after = world.svm.getAccount(ownerToken.address);
+  assert.equal(after.exists && tokenAmount(after.data), 1_000_000n);
 });

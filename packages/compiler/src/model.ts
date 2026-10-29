@@ -1,4 +1,5 @@
 import type { Loc } from "./diagnostics.ts";
+import type { IrExpr, IrStmt } from "./ir.ts";
 
 export type Scalar =
   | "u8" | "u16" | "u32" | "u64" | "u128"
@@ -72,6 +73,8 @@ export interface AccountOpts {
   constraint?: string;
   /** Rust for `constraint`, filled in while lowering. */
   constraintRust?: string;
+  /** Where the constraint literal was written. */
+  constraintLoc?: Loc;
   /** Account whose program id derives `seeds`. Anchor `seeds::program`. */
   seedsProgram?: string;
   executable?: boolean;
@@ -116,9 +119,13 @@ export interface ArgParam {
 export type Param = AccountParam | ArgParam;
 
 export interface Stmt {
+  /** Printed form, kept equal to `renderStmt(ir)` when `ir` is set. */
   code: string;
+  ir?: IrStmt;
   loc?: Loc;
 }
+
+export type { IrExpr, IrStmt };
 
 export interface InstructionModel {
   name: string;
