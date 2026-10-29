@@ -7,19 +7,19 @@ const STAGES = [
   {
     n: "01",
     title: "Parse",
-    body: "The TypeScript compiler API builds a source file. Axolotl walks interfaces and exported functions. Classes, async, and arbitrary calls are errors that name the file and the line.",
+    body: "parseFunction reads the exported function. The body stays a TypeScript block.",
     code: false,
   },
   {
     n: "02",
     title: "Model",
-    body: "Parameters become accounts or arguments. Account options are read from the type literal, including seeds. The body lowers to assignments, if, while, a restricted for, require, emit, and CPI.",
+    body: "lowerBinary turns counter.count + 1n into a check node. validateAccounts refuses hasOne unless the named account is a Signer.",
     code: false,
   },
   {
     n: "03",
     title: "Emit",
-    body: "Integer math is checked_add and its siblings. Instruction discriminators are sha256(\"global:\" + name), the first eight bytes, which is what Anchor uses. A source map points a rustc error back at the TypeScript line.",
+    body: "renderExpr is the first place that writes checked_add. emitInstruction prints that into the Anchor function.",
     code: true,
   },
   {
@@ -52,9 +52,9 @@ export function CompilerPage() {
             <div>
               <h2>{stage.title}</h2>
               <p>
-                {stage.n === "01" && <>The TypeScript compiler API builds a source file. Axolotl walks interfaces and exported functions. Classes, <code>async</code>, and arbitrary calls are errors that name the file and the line.</>}
-                {stage.n === "02" && <>Parameters become accounts or arguments. Account options are read from the type literal, including seeds. The body lowers to assignments, <code>if</code>, <code>while</code>, a restricted <code>for</code>, <code>require</code>, <code>emit</code>, and CPI.</>}
-                {stage.n === "03" && <>Integer math is <code>checked_add</code> and its siblings. Instruction discriminators are <code>sha256("global:" + name)</code>, the first eight bytes, which is what Anchor uses. A source map points a rustc error back at the TypeScript line.</>}
+                {stage.n === "01" && <><code>parseFunction</code> reads the exported function. <code>counter</code> and <code>authority</code> become accounts. The body stays a TypeScript block. Parse does not know that <code>+</code> will be checked.</>}
+                {stage.n === "02" && <><code>lowerBinary</code> turns <code>counter.count + 1n</code> into a check node, operation add. <code>validateAccounts</code> refuses <code>hasOne</code> unless the named account is a <code>Signer</code>. The body is data, not Rust yet.</>}
+                {stage.n === "03" && <><code>renderExpr</code> is the first place that writes <code>checked_add</code>. <code>emitInstruction</code> prints that into the Anchor function. The longer trace is <code>docs/trace.md</code>.</>}
                 {stage.n === "04" && <><code>axolotl build</code> writes the crate and runs <code>anchor build</code>. The <code>.so</code> in <code>target/deploy</code> is what LiteSVM loads and what <code>axolotl deploy</code> sends to a cluster.</>}
               </p>
               {stage.code && (

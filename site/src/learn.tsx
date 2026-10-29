@@ -39,7 +39,7 @@ export function Learn() {
           Cross-program invocation is <code>invoke</code>. The callee sees a new instruction made of accounts the caller already holds. A PDA signature is rebuilt from the seeds. Return data comes back as bytes, separate from accounts.
         </p>
         <p>
-          <code>system.transfer</code>, <code>token.transferChecked</code>, and <code>cpi()</code> are the three forms Axolotl lowers. A token balance is still an account, owned by the token program. The vault example keeps a PDA as that account’s authority.
+          <code>system.transfer</code>, <code>token.transferChecked</code>, and <code>cpi()</code> are the three forms Axolotl lowers. A token balance is still an account, owned by the token program. The vault example requires the vault PDA to be the destination token account’s authority, and the signer to be the source account’s authority.
         </p>
         <CpiFigure />
       </section>
