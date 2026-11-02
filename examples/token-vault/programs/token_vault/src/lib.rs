@@ -3,7 +3,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-declare_id!("4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3");
+declare_id!("BYQd8xkz8CxwPuk1E1VfDHcza3xCJ4QM1drc4ovjUHiu");
 
 #[program]
 pub mod token_vault {

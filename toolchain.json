@@ -1,6 +1,6 @@
 {
   "anchor": "1.2.2",
-  "solana": "4.1.2",
+  "solana": "4.4.0",
   "platformTools": "v1.57",
   "sbpf": "v3",
   "rustc": "1.99.1",
@@ -10,7 +10,7 @@
     "@anchor-lang/core": "1.2.2",
     "@coral-xyz/anchor": "0.32.1",
     "litesvm": "1.6.1",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "notes": "@coral-xyz/anchor stopped at 0.32.1. The maintained JavaScript client is @anchor-lang/core and tracks the Anchor crate."
 }

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Axolotl conformance program"
 
 [program]
-id = "AU6PWDE1vrLgrcJpFvhWwDupTVHASu1jEwKTCX5NUsr1"
+id = "HYw1kwqR5GZirZC2xfRabMYHRw7kGSQr9dA5Kqawbv4W"
 keypair = "keys/conformance.json"
 
 [provider]
@@ -13,4 +13,4 @@ wallet = "~/.config/solana/id.json"
 
 [toolchain]
 anchor = "1.2.2"
-solana = "4.1.2"
+solana = "4.4.0"

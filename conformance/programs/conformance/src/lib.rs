@@ -3,7 +3,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-declare_id!("AU6PWDE1vrLgrcJpFvhWwDupTVHASu1jEwKTCX5NUsr1");
+declare_id!("HYw1kwqR5GZirZC2xfRabMYHRw7kGSQr9dA5Kqawbv4W");
 
 fn step(value: u64) -> Result<u64> {
     return Ok(value.checked_add(1u64).ok_or(AxolotlError::ArithmeticOverflow)?);
