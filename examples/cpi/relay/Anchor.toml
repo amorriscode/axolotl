@@ -1,13 +1,13 @@
 [toolchain]
 anchor_version = "1.2.2"
-solana_version = "4.1.2"
+solana_version = "4.4.0"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.localnet]
-relay = "6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c"
+relay = "BxWotAK42uNheBHamrXhi4n3y3xTh5vsrPrUrodE7LMs"
 
 [provider]
 cluster = "localnet"

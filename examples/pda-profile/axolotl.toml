@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "User profile stored at a PDA"
 
 [program]
-id = "5kYGWFrmwpgL8xsCtPCwzdxWjZ3itbtmPqjk8sRNGiU3"
+id = "ApjZiJsqrhyDKsP3xzK5y6reP2VRubPdKZEpadpHSRte"
 keypair = "keys/pda_profile.json"
 
 [provider]
@@ -13,4 +13,4 @@ wallet = "~/.config/solana/id.json"
 
 [toolchain]
 anchor = "1.2.2"
-solana = "4.1.2"
+solana = "4.4.0"

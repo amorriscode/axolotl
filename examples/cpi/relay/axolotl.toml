@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Calls the echo program through CPI"
 
 [program]
-id = "6kkQrxZGUNnFnp9a82NAKDVv9ithwmPLz3oSLr4hnU7c"
+id = "BxWotAK42uNheBHamrXhi4n3y3xTh5vsrPrUrodE7LMs"
 keypair = "keys/relay.json"
 
 [provider]
@@ -13,4 +13,4 @@ wallet = "~/.config/solana/id.json"
 
 [toolchain]
 anchor = "1.2.2"
-solana = "4.1.2"
+solana = "4.4.0"

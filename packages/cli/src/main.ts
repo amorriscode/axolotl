@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { compile, formatDiagnostics, pubkeyFromKeypair } from "@axolotl-sol/compiler";
 
 const ANCHOR = "1.2.2";
-const SOLANA = "4.1.2";
+const SOLANA = "4.4.0";
 
 interface ProjectConfig {
   root: string;
