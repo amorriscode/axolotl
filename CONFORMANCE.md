@@ -1,30 +1,30 @@
 # Axolotl conformance
 
-Generated 2026-10-29. 50 passing, 0 failing, 0 unsupported. **Pass rate 100%** (50/50).
+Generated 2026-11-09. 31 passing, 19 failing, 0 unsupported. **Pass rate 62%** (31/50).
 
 Programs are compiled to Anchor Rust, built with Anchor 1.2.2 / Agave 4.1.2, and executed in [LiteSVM](https://www.litesvm.com/) 1.6.1.
 
 | Group | Feature | Status | Detail |
 | --- | --- | --- | --- |
-| Examples | Counter init, has_one, and checked add | pass | examples/counter |
-| Examples | Signer and custom error constraints | pass | examples/counter |
-| Tokens | SPL Token transfer_checked, including a PDA signer | pass | examples/token-vault |
-| Tokens | token::authority rejects the wrong destination | pass | examples/token-vault |
-| PDAs | PDA seeds, stored bump, bytes32, and events | pass | examples/pda-profile |
-| CPI | CPI into another Anchor program | pass | examples/cpi |
-| Accounts | init, payer, rent exemption, program ownership | pass | conformance |
-| Accounts | close returns lamports | pass | conformance |
-| Language | if / else | pass | conformance |
-| Language | Bounded for loop | pass | conformance |
-| CPI | System program transfer | pass | conformance |
-| Types | u8, u16, u32, u64, i64, bool, bytes32 | pass | conformance |
-| Sysvars | Clock sysvar | pass | conformance |
-| Sysvars | Rent sysvar minimum_balance | pass | conformance |
-| Types | String arguments, require, and log | pass | conformance |
-| Types | Pubkey instruction arguments | pass | conformance |
-| Events | Anchor events in transaction logs | pass | conformance |
-| PDAs | Seeds from constants, args, and account keys | pass | conformance |
-| Language | continue inside for runs the increment | pass | Ten iterations, skip one, counter ends at 9. |
+| Examples | Counter init, has_one, and checked add | fail | examples/counter |
+| Examples | Signer and custom error constraints | fail | examples/counter |
+| Tokens | SPL Token transfer_checked, including a PDA signer | fail | examples/token-vault |
+| Tokens | token::authority rejects the wrong destination | fail | examples/token-vault |
+| PDAs | PDA seeds, stored bump, bytes32, and events | fail | examples/pda-profile |
+| CPI | CPI into another Anchor program | fail | examples/cpi |
+| Accounts | init, payer, rent exemption, program ownership | fail | conformance |
+| Accounts | close returns lamports | fail | conformance |
+| Language | if / else | fail | conformance |
+| Language | Bounded for loop | fail | conformance |
+| CPI | System program transfer | fail | conformance |
+| Types | u8, u16, u32, u64, i64, bool, bytes32 | fail | conformance |
+| Sysvars | Clock sysvar | fail | conformance |
+| Sysvars | Rent sysvar minimum_balance | fail | conformance |
+| Types | String arguments, require, and log | fail | conformance |
+| Types | Pubkey instruction arguments | fail | conformance |
+| Events | Anchor events in transaction logs | fail | conformance |
+| PDAs | Seeds from constants, args, and account keys | fail | conformance |
+| Language | continue inside for runs the increment | fail | Ten iterations, skip one, counter ends at 9. |
 | IDL | Anchor IDL discriminators, events, and error codes | pass | packages/compiler |
 | Language | while loops and scalar helper functions | pass | conformance |
 | Language | continue | pass | conformance |

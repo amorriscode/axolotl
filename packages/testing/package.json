@@ -10,6 +10,6 @@
     "@solana-program/system": "0.16.0",
     "@solana-program/token": "0.18.0",
     "@solana/kit": "8.6.0",
-    "litesvm": "1.6.1"
+    "litesvm": "1.6.2"
   }
 }

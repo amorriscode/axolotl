@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A minimal counter, the Axolotl hello-world"
 
 [program]
-id = "8qUgK4vi5mPRKpGfTVto7FpWyBjNgfB6U6opToXWM585"
+id = "8kteSPFmFusLDsUiiHJFKv7tfh6CP7sCFdQeNfNUrbb7"
 keypair = "keys/counter.json"
 
 [provider]
@@ -13,4 +13,4 @@ wallet = "~/.config/solana/id.json"
 
 [toolchain]
 anchor = "1.2.2"
-solana = "4.1.2"
+solana = "4.4.1"

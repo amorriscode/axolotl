@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Callee used by the CPI example"
 
 [program]
-id = "5MWt5tcVEsYHTh2tPJxnM8gRtvUpWa4E72tn2PzhaoXU"
+id = "3LuQPcBQGYXGbxSYTqpJwp4fdBhXMj1oxrvctGpFL48s"
 keypair = "keys/echo.json"
 
 [provider]
@@ -13,4 +13,4 @@ wallet = "~/.config/solana/id.json"
 
 [toolchain]
 anchor = "1.2.2"
-solana = "4.1.2"
+solana = "4.4.1"

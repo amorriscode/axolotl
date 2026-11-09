@@ -1,13 +1,13 @@
 [toolchain]
 anchor_version = "1.2.2"
-solana_version = "4.1.2"
+solana_version = "4.4.1"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.localnet]
-conformance = "AU6PWDE1vrLgrcJpFvhWwDupTVHASu1jEwKTCX5NUsr1"
+conformance = "aRmmU9fTARiCSFQPPuTfC8Y8Bv5pckV7g4ZHf8xfZUL"
 
 [provider]
 cluster = "localnet"
