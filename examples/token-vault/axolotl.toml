@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "SPL token vault using a PDA authority"
 
 [program]
-id = "4mP1BL1yP9Rt1TSmuF4ht4wzmJig6hPJpumA5uVCQaQ3"
+id = "5u6Y9YkaqWSshKw7zHZTqzFUeFMtQkPup5QYYLvByixB"
 keypair = "keys/token_vault.json"
 
 [provider]
@@ -13,4 +13,4 @@ wallet = "~/.config/solana/id.json"
 
 [toolchain]
 anchor = "1.2.2"
-solana = "4.1.2"
+solana = "4.4.1"

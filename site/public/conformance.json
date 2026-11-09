@@ -1,10 +1,10 @@
 {
-  "generated": "2026-10-29",
-  "passed": 50,
-  "failed": 0,
+  "generated": "2026-11-09",
+  "passed": 31,
+  "failed": 19,
   "unsupported": 0,
   "total": 50,
-  "passRate": 100,
+  "passRate": 62,
   "anchor": "1.2.2",
   "solana": "4.1.2",
   "runtime": "litesvm 1.6.1",
@@ -13,133 +13,133 @@
       "id": "counter.lifecycle",
       "group": "Examples",
       "feature": "Counter init, has_one, and checked add",
-      "status": "pass",
+      "status": "fail",
       "detail": "examples/counter"
     },
     {
       "id": "counter.errors",
       "group": "Examples",
       "feature": "Signer and custom error constraints",
-      "status": "pass",
+      "status": "fail",
       "detail": "examples/counter"
     },
     {
       "id": "token.vault",
       "group": "Tokens",
       "feature": "SPL Token transfer_checked, including a PDA signer",
-      "status": "pass",
+      "status": "fail",
       "detail": "examples/token-vault"
     },
     {
       "id": "token.vault-owner",
       "group": "Tokens",
       "feature": "token::authority rejects the wrong destination",
-      "status": "pass",
+      "status": "fail",
       "detail": "examples/token-vault"
     },
     {
       "id": "pda.profile",
       "group": "PDAs",
       "feature": "PDA seeds, stored bump, bytes32, and events",
-      "status": "pass",
+      "status": "fail",
       "detail": "examples/pda-profile"
     },
     {
       "id": "cpi.relay",
       "group": "CPI",
       "feature": "CPI into another Anchor program",
-      "status": "pass",
+      "status": "fail",
       "detail": "examples/cpi"
     },
     {
       "id": "accounts.init",
       "group": "Accounts",
       "feature": "init, payer, rent exemption, program ownership",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "accounts.close",
       "group": "Accounts",
       "feature": "close returns lamports",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "control.if",
       "group": "Language",
       "feature": "if / else",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "control.loop",
       "group": "Language",
       "feature": "Bounded for loop",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "cpi.system",
       "group": "CPI",
       "feature": "System program transfer",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "types.scalars",
       "group": "Types",
       "feature": "u8, u16, u32, u64, i64, bool, bytes32",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "sysvar.clock",
       "group": "Sysvars",
       "feature": "Clock sysvar",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "sysvar.rent",
       "group": "Sysvars",
       "feature": "Rent sysvar minimum_balance",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "types.string",
       "group": "Types",
       "feature": "String arguments, require, and log",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "types.pubkey",
       "group": "Types",
       "feature": "Pubkey instruction arguments",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "events.emit",
       "group": "Events",
       "feature": "Anchor events in transaction logs",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "pda.mixed",
       "group": "PDAs",
       "feature": "Seeds from constants, args, and account keys",
-      "status": "pass",
+      "status": "fail",
       "detail": "conformance"
     },
     {
       "id": "control.for-continue",
       "group": "Language",
       "feature": "continue inside for runs the increment",
-      "status": "pass",
+      "status": "fail",
       "detail": "Ten iterations, skip one, counter ends at 9."
     },
     {
